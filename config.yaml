@@ -1,0 +1,112 @@
+app:
+  company: BK Mehta & Associates
+  name: DocRegistry Pro
+  tagline: Advocate Office Registry Management System
+  version: v1.0
+document_types:
+- Sale Deed
+- Lease Agreement
+- Gift Deed
+- Mortgage
+- Power of Attorney
+- Hak-Kami (Dispose of rights)
+- Release
+- Rent Agreement
+- Agreement of Sale (Banakhat)
+duplicate_check:
+  enabled: true
+  fields:
+  - Garvi_Application_ID
+  mode: AND
+email:
+  admin_emails:
+  - bkmehta.associate@gmail.com
+  - achyutam.mehta@gmail.com
+google:
+  accounts:
+    bk:
+      credentials: credentials/docregistry-credentials_bk.json.json
+      sheet_id: 1zNawbVGBhRvOE2aFFnYO7GuM0J2lyccARvNmAoGDeU4
+    default:
+      credentials: credentials/docregistry-credentials.json
+      sheet_id: 125SVBTF0LPfi0cYXbNp0Gut_DRI-bOLnqSP4qQdcK_A
+  active_account: bk
+party_name_2_options:
+- NCB NARODA
+- NCB NANA CHILODA
+- NCB NAVRANGPURA
+- NCB NARANPURA
+- NCB DARIYAPUR
+- NCB RAKHIYAL
+- NCB SOLA
+- NCB RANIP
+- NCB KATHWADA
+- NCB MEGHANINAGAR
+- NCB SABARMATI
+- NCB KOBA
+- NCB SATELLITE
+- NCB NAVA NARODA
+- Vijay Co-oprative Bank (VCB)
+- Amdvad Distrcit Co-oprative Bank (ADC)
+session:
+  cookie_name: docregistry_session
+  idle_timeout_minutes: 30
+telegram:
+  enabled: true
+sro_options:
+  Ahmedabad:
+  - Ahmedabad- 1 City
+  - Ahmedabad- 2 Vadaj
+  - Ahmedabad- 3 Memnagar
+  - Ahmedabad- 4 Paldi
+  - Ahmedabad- 5 Narol
+  - Ahmedabad- 6 Naroda
+  - Ahmedabad- 7 Odhav
+  - Ahmedabad- 8 Sola
+  - Ahmedabad- 9 Bopal
+  - Ahmedabad- 10 Vejalpur
+  - Ahmedabad- 11 Aslali
+  - Ahmedabad- 12 Nikol
+  - Ahmedabad- 13 Sabarmati
+  - Ahmedabad- 13 City Agriculture
+  - Ahmedabad- 14 Vastral
+  - Ahmedabad- 14 Dascroi Agriculture
+  - S.R.O.- Sanand
+  - S.R.O.- Viramgam
+  - S.R.O.- Dholka
+  - S.R.O.-Dhandhuka
+  - S.R.O.- Bavla
+  - S.R.O.- Mandal
+  - S.R.O.- Detroj
+  - S.R.O.- Dholera
+  Gandhinagar:
+  - Gandhinagar Zone- 1
+  - Gandhinagar Zone- 2
+  - Gandhinagar Zone- 3
+  - S.R.O- Dehgam
+  - S.R.O- Mansa
+  - S.R.O- Kalol
+  Mahesana:
+  - S.R.O.- Kheralu
+  - S.R.O.- Kadi
+  - S.R.O.- Visnagar
+  - S.R.O.- Unjha
+  - S.R.O.- Vijapur
+  - S.R.O.- Mahesana
+  - S.R.O.- Satlasan
+  - S.R.O.- Becharaji
+  - S.R.O.- Vadnagar
+  - S.R.O.- Jotana
+users:
+  Akhilb:
+    name: Akhil Barot
+    password: akhil123
+    role: staff
+  achyutam:
+    name: Achyutam Mehta
+    password: Achyutam123
+    role: staff
+  admin:
+    name: Admin User
+    password: admin123
+    role: admin

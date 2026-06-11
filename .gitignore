@@ -1,0 +1,30 @@
+# Environment variables
+.env
+
+# Credentials
+credentials/*.json
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Streamlit
+.streamlit/
+secrets.toml
+
+# Runtime markers
+data/.last_appointment_notify.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
