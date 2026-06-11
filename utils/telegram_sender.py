@@ -136,13 +136,20 @@ def notify_today_appointments(appointments: list):
         text = (
             f"<b>Entry ID:</b> {appt.get('Entry_ID', '')}\n"
             f"<b>Doc Type:</b> {appt.get('Doc_Type', '')}\n"
+            f"<b>Appointment Date:</b> {appt.get('Appointment Date', '')}\n"
             f"<b>Appointment Time:</b> {appt.get('Appointment Time', '')}\n"
             f"<b>SRO:</b> {appt.get('SRO', '')}\n"
             f"<b>Party Name 1:</b> {appt.get('Party_Name 1', '')}\n"
             f"<b>Party 1 Mobile No:</b> {appt.get('Party_Name 1 Mobile_No', '')}\n"
             f"<b>Party Name 2:</b> {appt.get('Party_Name 2', '') or '—'}\n"
+            f"<b>GARVI Application ID:</b> {appt.get('Garvi_Application_ID', '')}\n"
+            f"<b>Index Application No:</b> {appt.get('Inedex_Application_No', '')}\n"
+            f"<b>Index No:</b> {appt.get('Index_No', '')}\n"
+            f"<b>Search No:</b> {appt.get('Search_No', '')}\n"
             f"<b>Title Status:</b> {appt.get('Title_Status', '')}\n"
-            f"<b>Created By:</b> {appt.get('Created_By', '')}"
+            f"<b>Created By:</b> {appt.get('Created_By', '')}\n"
+            f"<b>Entry Date:</b> {appt.get('Entry_Date', '')}\n"
+            f"<b>Entry Time:</b> {appt.get('Entry_Time', '')}"
         )
         try:
             send_telegram_message(text)
