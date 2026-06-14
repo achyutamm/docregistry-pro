@@ -84,12 +84,12 @@ def _base_template(title: str, body_html: str) -> str:
 
 
 def send_password_reminder(to_email: str, full_name: str, username: str, password: str):
-    """Send a password reminder email to the user."""
+    """Email a newly-generated password to the user after a password reset request."""
     b = _branding()
     body = f"""
     <p>Hi <b>{full_name}</b>,</p>
-    <p>You recently requested your password for <b>{b["name"]}</b>.
-       Your account credentials are below:</p>
+    <p>You recently requested a password reset for <b>{b["name"]}</b>.
+       A new password has been generated for your account:</p>
     <table style="border-collapse:collapse;width:100%;margin:16px 0;">
       <tr style="background:#f0f4ff;">
           <td style="padding:10px 14px;font-weight:bold;color:#1a237e;width:130px;">Username</td>
@@ -97,21 +97,21 @@ def send_password_reminder(to_email: str, full_name: str, username: str, passwor
             <code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:15px;">{username}</code>
           </td></tr>
       <tr>
-          <td style="padding:10px 14px;font-weight:bold;color:#1a237e;">Password</td>
+          <td style="padding:10px 14px;font-weight:bold;color:#1a237e;">New Password</td>
           <td style="padding:10px 14px;">
             <code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:15px;">{password}</code>
           </td></tr>
     </table>
     <div style="background:#fff8e1;border-left:4px solid #ffc107;padding:12px 16px;
                 border-radius:0 6px 6px 0;margin:20px 0;">
-      <b>Security Tip:</b> Please do not share your password with anyone.
-      If you did not request this email, please contact the administrator immediately.
+      <b>Security Tip:</b> Please log in and keep this password safe — do not share it with
+      anyone. If you did not request this reset, please contact the administrator immediately.
     </div>
     """
     send_email(
         to_email=to_email,
-        subject=f"[{b['name']}] Password Reminder — {username}",
-        html_body=_base_template("🔑 Password Reminder", body),
+        subject=f"[{b['name']}] Your New Password — {username}",
+        html_body=_base_template("🔑 Password Reset", body),
     )
 
 

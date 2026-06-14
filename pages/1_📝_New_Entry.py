@@ -4,7 +4,7 @@ DocRegistry Pro - Phase 2
 """
 
 import streamlit as st
-from utils.sheets_manager import SheetsManager
+from utils.sheets_cache import get_sheets_manager, clear_records_cache
 from utils.telegram_sender import notify_new_entry
 from datetime import datetime, date, time
 import pandas as pd
@@ -212,7 +212,7 @@ if submit_btn:
         st.error("❌ Party 1 Mobile No must be exactly 10 digits.")
     else:
         try:
-            sheets_manager = SheetsManager()
+            sheets_manager = get_sheets_manager()
 
             success, entry_id = sheets_manager.add_record(
                 doc_type=doc_type,
@@ -233,6 +233,7 @@ if submit_btn:
             )
 
             if success:
+                clear_records_cache()
                 notify_new_entry({
                     "entry_id":             entry_id,
                     "doc_type":             doc_type,

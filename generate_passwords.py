@@ -1,21 +1,20 @@
 """
-Generate hashed passwords for config.yaml
-Run this once to get proper password hashes
+Generate hashed passwords for config.yaml's `users` section.
+Run this once per password to get the value to paste into config.yaml.
 """
 
-import streamlit_authenticator as stauth
+from utils.password_utils import hash_password
 
-# Plain text passwords
-passwords = ['admin123', 'staff123']
+# Plain text passwords to hash
+passwords = {
+    "admin": "admin123",
+    "staff1": "staff123",
+}
 
-# Generate hashed passwords
-hashed_passwords = stauth.Hasher(passwords).generate()
-
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("COPY THESE HASHED PASSWORDS TO config.yaml")
-print("="*60)
-print("\nFor admin (password: admin123):")
-print(hashed_passwords[0])
-print("\nFor staff1 (password: staff123):")
-print(hashed_passwords[1])
-print("\n" + "="*60)
+print("=" * 60)
+for label, plain in passwords.items():
+    print(f"\nFor {label} (password: {plain}):")
+    print(hash_password(plain))
+print("\n" + "=" * 60)

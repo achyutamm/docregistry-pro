@@ -51,8 +51,6 @@ party_name_2_options:
 session:
   cookie_name: docregistry_session
   idle_timeout_minutes: 30
-telegram:
-  enabled: true
 sro_options:
   Ahmedabad:
   - Ahmedabad- 1 City
@@ -97,16 +95,18 @@ sro_options:
   - S.R.O.- Becharaji
   - S.R.O.- Vadnagar
   - S.R.O.- Jotana
+telegram:
+  enabled: true
 users:
   Akhilb:
     name: Akhil Barot
-    password: akhil123
+    password: pbkdf2_sha256$260000$07eceeb2e9dcfa8c1f85692760052395$c52bd0fd9c75d01e7c1e3951a1a47e51617796804f42a5be1ec12217ed0150b2
     role: staff
   achyutam:
     name: Achyutam Mehta
-    password: Achyutam123
+    password: pbkdf2_sha256$260000$d42ac3ec9f3e933329750f6d0202cab9$34166e1cc33289c31e5b61ff82674434af1d40bc12ddccaba7f899985f7784c2
     role: staff
   admin:
     name: Admin User
-    password: admin123
+    password: pbkdf2_sha256$260000$0268dfb3b11a645eafd33b322a8cf409$c1f7c87f81a6cb53ceea6fa511952debd130c3f9346492d97d1a1e07cdeba897
     role: admin

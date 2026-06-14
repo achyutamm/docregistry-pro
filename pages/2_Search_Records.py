@@ -3,7 +3,7 @@
 """
 
 import streamlit as st
-from utils.sheets_manager import SheetsManager
+from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_history_cached
 import pandas as pd
 import yaml
 
@@ -110,8 +110,8 @@ with st.sidebar:
 # LOAD DATA
 # ============================================
 try:
-    sheets_manager = SheetsManager()
-    df = sheets_manager.get_all_records()
+    sheets_manager = get_sheets_manager()
+    df = get_all_records_cached(sheets_manager)
 except Exception as e:
     st.error(f"❌ Failed to load records: {e}")
     st.stop()
@@ -169,11 +169,13 @@ with st.expander("🔎 Search & Filters", expanded=True):
             "Party Name 2", options=PARTY_NAME_2_OPTIONS, default=[], key=f"party2_filter_{fk}"
         )
 
-    col6, col7 = st.columns(2)
+    col6, col7, col8 = st.columns(3)
     with col6:
         date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}")
     with col7:
         date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}")
+    with col8:
+        exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}")
 
 # ============================================
 # APPLY FILTERS
@@ -204,6 +206,8 @@ if date_from:
     filtered = filtered[filtered["Appointment Date"] >= str(date_from)]
 if date_to:
     filtered = filtered[filtered["Appointment Date"] <= str(date_to)]
+if exact_date:
+    filtered = filtered[filtered["Appointment Date"] == str(exact_date)]
 
 # ============================================
 # SUMMARY METRICS
@@ -269,7 +273,7 @@ else:
         )
 
         try:
-            h_df = sheets_manager.get_history(selected_entry_id)
+            h_df = get_history_cached(sheets_manager, selected_entry_id)
             edit_rows = []
             if not h_df.empty:
                 h_df["Entry_ID"] = h_df["Entry_ID"].astype(str).str.replace(",", "", regex=False)

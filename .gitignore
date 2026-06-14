@@ -18,9 +18,6 @@ __pycache__/
 .streamlit/
 secrets.toml
 
-# Runtime markers
-data/.last_appointment_notify.txt
-
 # IDE
 .vscode/
 .idea/

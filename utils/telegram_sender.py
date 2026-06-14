@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_DAILY_MARKER_FILE = os.path.join("data", ".last_appointment_notify.txt")
-
 
 def _telegram_config():
     return (
@@ -79,26 +77,6 @@ def notify_new_entry(record: dict):
 
     try:
         send_telegram_message(text)
-    except Exception:
-        pass
-
-
-def should_send_daily_appointments() -> bool:
-    """True if today's appointments notification has not been sent yet today."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    try:
-        with open(_DAILY_MARKER_FILE, "r") as f:
-            return f.read().strip() != today_str
-    except Exception:
-        return True
-
-
-def mark_daily_appointments_sent():
-    """Record that today's appointments notification has been sent."""
-    try:
-        os.makedirs(os.path.dirname(_DAILY_MARKER_FILE), exist_ok=True)
-        with open(_DAILY_MARKER_FILE, "w") as f:
-            f.write(datetime.now().strftime("%Y-%m-%d"))
     except Exception:
         pass
 

@@ -6,6 +6,7 @@ import json
 import streamlit as st
 import yaml
 from datetime import datetime, timedelta
+from utils.password_utils import hash_password, verify_password, is_hashed
 
 
 class SimpleAuth:
@@ -55,7 +56,13 @@ class SimpleAuth:
     # ── public API ────────────────────────────────────────────────
     def authenticate(self, username, password):
         if username in self.users:
-            if self.users[username]['password'] == password:
+            stored = self.users[username]['password']
+            if is_hashed(stored):
+                if verify_password(password, stored):
+                    return True, self.users[username]
+            elif stored == password:
+                # Legacy plaintext password — upgrade to a hash now that it's verified
+                self.set_user_password(username, password)
                 return True, self.users[username]
         return False, None
 
@@ -150,10 +157,24 @@ class SimpleAuth:
             cfg = yaml.safe_load(f)
         if "users" not in cfg:
             cfg["users"] = {}
-        cfg["users"][username] = {"password": password, "name": name, "role": role}
+        cfg["users"][username] = {"password": hash_password(password), "name": name, "role": role}
         with open(config_file, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
         self.users = cfg["users"]
+        return True
+
+    def set_user_password(self, username, new_password, config_file="config.yaml"):
+        """Hash and persist a new password for an existing user (used for password resets)."""
+        with open(config_file, "r") as f:
+            cfg = yaml.safe_load(f)
+        if username not in cfg.get("users", {}):
+            return False
+        cfg["users"][username]["password"] = hash_password(new_password)
+        with open(config_file, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+        self.users = cfg["users"]
+        if st.session_state.get("username") == username:
+            st.session_state.user_info = self.users[username]
         return True
 
     def remove_user_from_config(self, username, config_file="config.yaml"):

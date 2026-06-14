@@ -8,9 +8,15 @@ import os
 import streamlit as st
 import extra_streamlit_components as stx
 from utils.simple_auth import SimpleAuth
-from utils.sheets_manager import SheetsManager
+from utils.password_utils import generate_temp_password
+from utils.sheets_cache import (
+    get_sheets_manager,
+    get_all_records_cached, clear_records_cache,
+    get_history_cached, clear_history_cache,
+    get_user_requests_cached, clear_user_requests_cache,
+    get_user_activity_log_cached, clear_user_activity_log_cache,
+)
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
-from utils.telegram_sender import should_send_daily_appointments, mark_daily_appointments_sent, notify_today_appointments
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
@@ -112,11 +118,11 @@ if not auth.is_authenticated():
 
     with tab_forgot:
         st.markdown("### 🔑 Forgot Password")
-        st.caption("Enter your username and registered email. We will send your password to that email.")
+        st.caption("Enter your username and registered email. We will email you a new password.")
         with st.form("forgot_form"):
             fp_username = st.text_input("Username *", placeholder="Enter your username")
             fp_email    = st.text_input("Registered Email *", placeholder="Enter your registered email")
-            fp_submit   = st.form_submit_button("📧 Send Password", type="primary", use_container_width=True)
+            fp_submit   = st.form_submit_button("📧 Send New Password", type="primary", use_container_width=True)
 
         if fp_submit:
             if not fp_username.strip() or not fp_email.strip():
@@ -125,15 +131,17 @@ if not auth.is_authenticated():
                 st.error("❌ Your details do not match our records. Please check your username and email.")
             else:
                 try:
-                    _fp_sm      = SheetsManager()
+                    _fp_sm      = get_sheets_manager()
                     _reg_email  = _fp_sm.get_user_email_from_requests(fp_username.strip())
                     _user_data  = auth.users.get(fp_username.strip(), {})
                     if _reg_email.lower() == fp_email.strip().lower():
+                        _new_password = generate_temp_password()
+                        auth.set_user_password(fp_username.strip(), _new_password)
                         send_password_reminder(
                             to_email  = _reg_email,
                             full_name = _user_data.get("name", fp_username.strip()),
                             username  = fp_username.strip(),
-                            password  = _user_data.get("password", ""),
+                            password  = _new_password,
                         )
                         st.session_state["fp_success"] = True
                         st.rerun()
@@ -163,7 +171,7 @@ if not auth.is_authenticated():
                 st.error("❌ Username already exists. Please choose another.")
             else:
                 try:
-                    _sm = SheetsManager()
+                    _sm = get_sheets_manager()
                     from datetime import datetime as _dt
                     _requested_date = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
                     _sm.add_user_request(
@@ -173,6 +181,7 @@ if not auth.is_authenticated():
                         role=su_role.lower(),
                         password=su_password
                     )
+                    clear_user_requests_cache()
                     # Notify all admins (non-blocking)
                     try:
                         _admin_emails = config.get("email", {}).get("admin_emails", ["bkmehta.associate@gmail.com"])
@@ -229,19 +238,7 @@ if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True):
 # =====================================================
 # INIT GOOGLE SHEETS
 # =====================================================
-sheets_manager = SheetsManager()
-
-# =====================================================
-# DAILY "TODAY'S APPOINTMENTS" TELEGRAM NOTIFICATION
-# =====================================================
-if should_send_daily_appointments():
-    try:
-        _today_appts = sheets_manager.get_appointments_for_date()
-        notify_today_appointments(_today_appts.to_dict("records"))
-        mark_daily_appointments_sent()
-    except Exception:
-        pass
-
+sheets_manager = get_sheets_manager()
 
 # =====================================================
 # DASHBOARD
@@ -251,7 +248,7 @@ if page == "🏠 Dashboard":
     st.title("🏛️ Dashboard")
     st.markdown(f"👋 **Welcome back, {user_info['name']}!**  \nHere's a quick overview of appointments and recent registry activity.")
 
-    df = sheets_manager.get_all_records()
+    df = get_all_records_cached(sheets_manager)
 
     if df.empty:
         st.info("No records available yet.")
@@ -575,7 +572,7 @@ elif page == "🔍 Search Records":
     st.markdown("Search and filter registry entries from the database")
     st.divider()
 
-    df = sheets_manager.get_all_records()
+    df = get_all_records_cached(sheets_manager)
 
     if df.empty:
         st.info("No records found in the database.")
@@ -711,7 +708,7 @@ elif page == "🔍 Search Records":
                 "Search_No": "Search No.", "Title_Status": "Title Status",
             }
             try:
-                h_df = sheets_manager.get_history(selected_entry_id)
+                h_df = get_history_cached(sheets_manager, selected_entry_id)
                 edit_rows = []
                 if not h_df.empty:
                     h_df["Entry_ID"] = h_df["Entry_ID"].astype(str).str.replace(",", "", regex=False)
@@ -765,7 +762,7 @@ elif page == "✏️ Edit Records":
         else:
             st.info(msg)
 
-    df = sheets_manager.get_all_records()
+    df = get_all_records_cached(sheets_manager)
 
     # Counter-based key so we can reset the widget after save
     if "edit_form_key" not in st.session_state:
@@ -1057,6 +1054,7 @@ elif page == "✏️ Edit Records":
                     )
 
                     if ok:
+                        clear_records_cache()
                         # Use the pre-edit snapshot so we compare against values the user
                         # saw when they opened the form — not the already-updated row that
                         # get_all_records() would return after the update above.
@@ -1098,6 +1096,7 @@ elif page == "✏️ Edit Records":
                         if changes:
                             try:
                                 sheets_manager.log_history(real_entry_id, username, changes)
+                                clear_history_cache()
                                 st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
                                 st.session_state["_edit_save_result"] = (
                                     "success",
@@ -1128,7 +1127,7 @@ elif page == "✏️ Edit Records":
         st.subheader("🕓 Edit History")
         try:
             actual_entry_id = str(edit_rec.get("Entry_ID", "")).replace(",", "")
-            hist_df = sheets_manager.get_history(actual_entry_id)
+            hist_df = get_history_cached(sheets_manager, actual_entry_id)
 
             # Build edit rows with friendly names and change description
             edit_rows = []
@@ -1182,7 +1181,7 @@ elif page == "👥 User Management":
 
     with tab_pending:
         try:
-            pending_df = sheets_manager.get_user_requests(status="Pending")
+            pending_df = get_user_requests_cached(sheets_manager, status="Pending")
             if pending_df.empty:
                 st.success("✅ No pending requests.")
             else:
@@ -1209,6 +1208,7 @@ elif page == "👥 User Management":
                                     sheets_manager.update_request_status(
                                         str(req["Request_ID"]), "Approved", username
                                     )
+                                    clear_user_requests_cache()
                                     st.toast(f"✅ {req['Full_Name']} approved and added!", icon="✅")
                                     try:
                                         sheets_manager.log_user_activity(
@@ -1218,6 +1218,7 @@ elif page == "👥 User Management":
                                             role=str(req.get("Role", "")),
                                             performed_by=username,
                                         )
+                                        clear_user_activity_log_cache()
                                     except Exception:
                                         pass
                                     try:
@@ -1238,6 +1239,7 @@ elif page == "👥 User Management":
                                     sheets_manager.update_request_status(
                                         str(req["Request_ID"]), "Rejected", username
                                     )
+                                    clear_user_requests_cache()
                                     st.toast(f"Request for {req['Full_Name']} rejected.", icon="❌")
                                     try:
                                         sheets_manager.log_user_activity(
@@ -1247,6 +1249,7 @@ elif page == "👥 User Management":
                                             role=str(req.get("Role", "")),
                                             performed_by=username,
                                         )
+                                        clear_user_activity_log_cache()
                                     except Exception:
                                         pass
                                     try:
@@ -1266,7 +1269,7 @@ elif page == "👥 User Management":
 
     with tab_all:
         try:
-            all_req_df = sheets_manager.get_user_requests()
+            all_req_df = get_user_requests_cached(sheets_manager)
             if all_req_df.empty:
                 st.info("No requests yet.")
             else:
@@ -1316,6 +1319,7 @@ elif page == "👥 User Management":
                                             role=udata.get("role", ""),
                                             performed_by=username,
                                         )
+                                        clear_user_activity_log_cache()
                                     except Exception:
                                         pass
                                     st.session_state.pop(f"confirm_del_{uname}", None)
@@ -1332,7 +1336,7 @@ elif page == "👥 User Management":
         st.subheader("🕓 User Activity Log")
         st.caption("Complete history of all approvals, rejections, and deletions.")
         try:
-            log_df = sheets_manager.get_user_activity_log()
+            log_df = get_user_activity_log_cached(sheets_manager)
             if log_df.empty:
                 st.info("No activity recorded yet.")
             else:
