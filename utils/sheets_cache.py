@@ -22,7 +22,7 @@ RECORDS_TTL = 30  # Entry_ID rows + Edit_History
 ADMIN_TTL = 30    # User_Requests + User_Activity_Log
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_sheets_manager() -> SheetsManager:
     return SheetsManager()
 
@@ -30,7 +30,7 @@ def get_sheets_manager() -> SheetsManager:
 # =====================================================
 # REGISTRY RECORDS
 # =====================================================
-@st.cache_data(ttl=RECORDS_TTL)
+@st.cache_data(ttl=RECORDS_TTL, show_spinner=False)
 def get_all_records_cached(_sm: SheetsManager):
     return _sm.get_all_records()
 
@@ -42,7 +42,7 @@ def clear_records_cache():
 # =====================================================
 # EDIT HISTORY
 # =====================================================
-@st.cache_data(ttl=RECORDS_TTL)
+@st.cache_data(ttl=RECORDS_TTL, show_spinner=False)
 def get_history_cached(_sm: SheetsManager, entry_id=None):
     return _sm.get_history(entry_id)
 
@@ -54,7 +54,7 @@ def clear_history_cache():
 # =====================================================
 # USER REQUESTS (signup approvals)
 # =====================================================
-@st.cache_data(ttl=ADMIN_TTL)
+@st.cache_data(ttl=ADMIN_TTL, show_spinner=False)
 def get_user_requests_cached(_sm: SheetsManager, status=None):
     return _sm.get_user_requests(status=status)
 
@@ -66,7 +66,7 @@ def clear_user_requests_cache():
 # =====================================================
 # USER ACTIVITY LOG
 # =====================================================
-@st.cache_data(ttl=ADMIN_TTL)
+@st.cache_data(ttl=ADMIN_TTL, show_spinner=False)
 def get_user_activity_log_cached(_sm: SheetsManager):
     return _sm.get_user_activity_log()
 
