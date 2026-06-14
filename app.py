@@ -611,11 +611,13 @@ elif page == "🔍 Search Records":
         with col5:
             party2_filter = st.multiselect("Party Name 2", options=PARTY_NAME_2_OPTIONS, default=[], key=f"party2_filter_{fk}")
 
-        col6, col7 = st.columns(2)
+        col6, col7, col8 = st.columns(3)
         with col6:
             date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}")
         with col7:
             date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}")
+        with col8:
+            exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}")
 
     # Apply Filters
     filtered = df.copy()
@@ -644,6 +646,8 @@ elif page == "🔍 Search Records":
         filtered = filtered[filtered["Appointment Date"] >= str(date_from)]
     if date_to:
         filtered = filtered[filtered["Appointment Date"] <= str(date_to)]
+    if exact_date:
+        filtered = filtered[filtered["Appointment Date"] == str(exact_date)]
 
     # Summary Metrics
     st.divider()
