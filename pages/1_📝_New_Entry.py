@@ -81,6 +81,18 @@ with top_col2:
     st.caption("Your username will be automatically stored in the CREATED_BY column for accountability.")
 
 # ============================================
+# FORM VERSION — bumping this clears all form fields reliably
+# ============================================
+if "ne_form_ver" not in st.session_state:
+    st.session_state.ne_form_ver = 0
+_fver = st.session_state.ne_form_ver
+
+def _clear_form():
+    st.session_state.ne_form_ver += 1
+    st.session_state.pop("ne_district", None)
+    st.session_state.pop("ne_sro", None)
+
+# ============================================
 # DISTRICT & SRO — outside form so they react instantly
 # ============================================
 
@@ -113,7 +125,7 @@ with c2:
 # ============================================
 # DATA ENTRY FORM
 # ============================================
-with st.form("registry_form", clear_on_submit=False):
+with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     st.markdown("##### Document Type & Appointment")
 
     # Row 1: Document Type & Date
@@ -195,14 +207,7 @@ def build_preview_df(entry_id="PREVIEW"):
     }])
 
 if clear_btn:
-    for _k in [
-        "ne_district", "ne_sro",
-        "doc_type", "entry_date", "entry_time",
-        "party_name_1", "party1_mobile", "party_name_2",
-        "garvi_appli_no", "index_appli_no", "search_no",
-        "index_no", "title_status",
-    ]:
-        st.session_state.pop(_k, None)
+    _clear_form()
     st.rerun()
 
 if preview_btn and not submit_btn:
@@ -266,14 +271,7 @@ if submit_btn:
                 st.markdown(f"**Created by:** `{username}` at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 st.markdown("### 📄 Saved Record")
                 st.dataframe(build_preview_df(entry_id), hide_index=True, use_container_width=True)
-                for _k in [
-                    "ne_district", "ne_sro",
-                    "doc_type", "entry_date", "entry_time",
-                    "party_name_1", "party1_mobile", "party_name_2",
-                    "garvi_appli_no", "index_appli_no", "search_no",
-                    "index_no", "title_status",
-                ]:
-                    st.session_state.pop(_k, None)
+                _clear_form()
             else:
                 st.error("❌ Failed to save entry. Please try again.")
         except Exception as e:
