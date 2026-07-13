@@ -5,6 +5,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys'
 import express from 'express'
 import qrcode from 'qrcode-terminal'
+import QRCode from 'qrcode'
 import pino from 'pino'
 
 const logger = pino({ level: 'silent' })
@@ -78,16 +79,39 @@ app.get('/status', (req, res) => {
     res.json({ connected: isConnected, qr_pending: !!lastQR })
 })
 
-// Returns QR code as a scannable image URL (for Railway — no terminal access)
-app.get('/qr', (req, res) => {
+// Serves QR code as a live HTML page with auto-refresh every 15 seconds
+app.get('/qr', async (req, res) => {
     if (isConnected) {
-        return res.json({ connected: true, message: 'Already connected, no QR needed.' })
+        return res.send(`<!DOCTYPE html><html><body style="text-align:center;font-family:sans-serif;padding:40px">
+            <h2>✅ WhatsApp Connected!</h2>
+            <p>The Baileys service is linked and ready to send messages.</p>
+        </body></html>`)
     }
     if (!lastQR) {
-        return res.json({ connected: false, message: 'No QR available yet. Wait a few seconds and retry.' })
+        return res.send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="3"></head>
+        <body style="text-align:center;font-family:sans-serif;padding:40px">
+            <h2>⏳ Waiting for QR code...</h2>
+            <p>Page refreshes automatically. Please wait.</p>
+        </body></html>`)
     }
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(lastQR)}`
-    res.json({ connected: false, qr_url: qrImageUrl })
+    try {
+        const qrDataUrl = await QRCode.toDataURL(lastQR, { width: 300 })
+        res.send(`<!DOCTYPE html>
+        <html>
+        <head>
+            <title>DocRegistry Pro - WhatsApp QR</title>
+            <meta http-equiv="refresh" content="15">
+        </head>
+        <body style="text-align:center;font-family:sans-serif;padding:40px;background:#f9f9f9">
+            <h2>📱 Scan with WhatsApp — Act Fast!</h2>
+            <p>Open WhatsApp → <b>Linked Devices</b> → <b>Link a Device</b> → Scan below</p>
+            <img src="${qrDataUrl}" style="width:300px;height:300px;border:4px solid #25D366;border-radius:12px">
+            <p style="color:#888;font-size:13px">⏱ QR expires in ~20 seconds. Page auto-refreshes every 15s.</p>
+        </body>
+        </html>`)
+    } catch (err) {
+        res.status(500).send('Error generating QR code: ' + err.message)
+    }
 })
 
 // Send message to WhatsApp group
