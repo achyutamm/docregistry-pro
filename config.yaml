@@ -103,7 +103,7 @@ telegram:
 whatsapp:
   enabled: true
   provider: baileys
-  baileys_api_url: http://localhost:3001
+  baileys_api_url: https://docregistry-pro-production.up.railway.app
   group_id: '120363409369498081@g.us'
   from_number: '+14155238886'
   mode: sandbox
