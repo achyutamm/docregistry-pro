@@ -1,6 +1,7 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "baileys_service/Dockerfile"
+dockerContextDir = "baileys_service"
 
 [deploy]
-startCommand = "cd baileys_service && node server.js"
 restartPolicyType = "always"
