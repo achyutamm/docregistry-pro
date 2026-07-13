@@ -32,12 +32,16 @@ def _send_via_baileys(body: str):
     group_id = wa_cfg.get("group_id", "").strip()
 
     if not group_id:
-        raise ValueError("whatsapp.group_id not set in config.yaml. Run 'npm run list-groups' in baileys_service/")
+        raise ValueError("whatsapp.group_id not set in config.yaml")
+
+    api_key = os.getenv("BAILEYS_API_KEY", "")
+    headers = {"x-api-key": api_key} if api_key else {}
 
     resp = requests.post(
         f"{api_url}/send",
         json={"group_id": group_id, "message": body},
-        timeout=10,
+        headers=headers,
+        timeout=15,
     )
     data = resp.json()
     if not data.get("success"):
