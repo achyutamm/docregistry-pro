@@ -96,10 +96,8 @@ sro_options:
   - S.R.O.- Becharaji
   - S.R.O.- Vadnagar
   - S.R.O.- Jotana
-notifications:
-  provider: both
 telegram:
-  enabled: true
+  enabled: false
 whatsapp:
   enabled: true
   provider: baileys
