@@ -18,8 +18,9 @@ const PORT = process.env.PORT || 3001
 const API_KEY = process.env.API_KEY || ''
 
 // Simple API key guard — skip if API_KEY not set (local dev)
+// /status and /qr are browser-facing, always public
 app.use((req, res, next) => {
-    if (req.path === '/status') return next() // always allow health check
+    if (req.path === '/status' || req.path === '/qr') return next()
     if (API_KEY && req.headers['x-api-key'] !== API_KEY) {
         return res.status(401).json({ success: false, error: 'Unauthorized' })
     }
