@@ -152,15 +152,32 @@ class SimpleAuth:
     def username_exists(self, username):
         return username in self.users
 
-    def add_user_to_config(self, username, password, name, role, config_file="config.yaml"):
+    def add_user_to_config(self, username, password, name, role, config_access=False, config_file="config.yaml"):
         with open(config_file, "r") as f:
             cfg = yaml.safe_load(f)
         if "users" not in cfg:
             cfg["users"] = {}
-        cfg["users"][username] = {"password": hash_password(password), "name": name, "role": role}
+        cfg["users"][username] = {
+            "password": hash_password(password), "name": name, "role": role,
+            "config_access": bool(config_access)
+        }
         with open(config_file, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
         self.users = cfg["users"]
+        return True
+
+    def set_user_config_access(self, username, value: bool, config_file="config.yaml"):
+        """Grant or revoke Configuration tab access for an existing user."""
+        with open(config_file, "r") as f:
+            cfg = yaml.safe_load(f)
+        if username not in cfg.get("users", {}):
+            return False
+        cfg["users"][username]["config_access"] = bool(value)
+        with open(config_file, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+        self.users = cfg["users"]
+        if st.session_state.get("username") == username:
+            st.session_state.user_info = self.users[username]
         return True
 
     def set_user_password(self, username, new_password, config_file="config.yaml"):

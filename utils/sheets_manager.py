@@ -60,11 +60,12 @@ class SheetsManager:
             self.user_requests_sheet = self.workbook.worksheet("User_Requests")
         except Exception:
             self.user_requests_sheet = self.workbook.add_worksheet(
-                title="User_Requests", rows=1000, cols=9
+                title="User_Requests", rows=1000, cols=10
             )
             self.user_requests_sheet.append_row([
                 "Request_ID", "Username", "Full_Name", "Email",
-                "Role", "Password", "Status", "Requested_Date", "Approved_By"
+                "Role", "Password", "Status", "Requested_Date", "Approved_By",
+                "Config_Access_Requested"
             ])
 
         # Get or auto-create User_Activity_Log sheet
@@ -131,14 +132,16 @@ class SheetsManager:
 
     def _ensure_user_requests_headers(self):
         """Insert the header row in User_Requests only if the first row is not already the header."""
-        _hdrs = ["Request_ID", "Username", "Full_Name", "Email",
-                 "Role", "Password", "Status", "Requested_Date", "Approved_By"]
+        _hdrs = self._USER_REQUEST_HEADERS
         first_row = self.user_requests_sheet.row_values(1)
         # Only insert if the sheet is empty OR the first cell is clearly a data value (not the header)
         if not first_row:
             self.user_requests_sheet.insert_row(_hdrs, 1)
         elif first_row[0] not in ("Request_ID", "") and not any(h == first_row[0] for h in _hdrs):
             self.user_requests_sheet.insert_row(_hdrs, 1)
+        elif "Config_Access_Requested" not in first_row:
+            # Migrate existing sheets created before this column was added
+            self.user_requests_sheet.update_cell(1, len(first_row) + 1, "Config_Access_Requested")
 
     # =====================================================
     # FIND DUPLICATES (CASE-INSENSITIVE, AND/OR)
@@ -288,18 +291,20 @@ class SheetsManager:
     # =====================================================
     # USER REQUESTS
     # =====================================================
-    def add_user_request(self, username, full_name, email, role, password):
+    def add_user_request(self, username, full_name, email, role, password, config_access_requested="No"):
         request_id = datetime.now().strftime("%Y%m%d%H%M%S")
         self.user_requests_sheet.append_row([
             request_id, username, full_name, email,
             role, password, "Pending",
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ""
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "",
+            config_access_requested
         ])
         return request_id
 
     _USER_REQUEST_HEADERS = [
         "Request_ID", "Username", "Full_Name", "Email",
-        "Role", "Password", "Status", "Requested_Date", "Approved_By"
+        "Role", "Password", "Status", "Requested_Date", "Approved_By",
+        "Config_Access_Requested"
     ]
 
     def get_user_requests(self, status=None):
@@ -315,6 +320,22 @@ class SheetsManager:
         if status:
             df = df[df["Status"] == status]
         return df
+
+    def email_exists(self, email: str) -> bool:
+        """Return True if the given email belongs to an already-approved user request."""
+        if not email:
+            return False
+        try:
+            records = self.user_requests_sheet.get_all_records(
+                expected_headers=self._USER_REQUEST_HEADERS
+            )
+            for row in records:
+                if str(row.get("Status", "")).strip() == "Approved" and \
+                   str(row.get("Email", "")).strip().lower() == email.strip().lower():
+                    return True
+        except Exception:
+            pass
+        return False
 
     def get_user_email_from_requests(self, username: str) -> str:
         """Return the email stored in User_Requests for the given username, or '' if not found."""

@@ -116,8 +116,12 @@ def send_password_reminder(to_email: str, full_name: str, username: str, passwor
 
 
 def notify_admins_new_request(admin_emails: list, full_name: str, username: str,
-                               role: str, email: str, requested_date: str):
+                               role: str, email: str, requested_date: str,
+                               config_access_requested: str = "No"):
     """Email all admins when a new access request is submitted."""
+    _cfg_access_display = (
+        '<b style="color:#2e7d32;">✅ Yes</b>' if config_access_requested == "Yes" else "No"
+    )
     body = f"""
     <p>A new account request has been submitted and is waiting for your approval.</p>
     <table style="border-collapse:collapse;width:100%;margin:16px 0;">
@@ -138,6 +142,9 @@ def notify_admins_new_request(admin_emails: list, full_name: str, username: str,
       <tr style="background:#f0f4ff;">
           <td style="padding:10px 14px;font-weight:bold;color:#1a237e;">Requested On</td>
           <td style="padding:10px 14px;">{requested_date}</td></tr>
+      <tr>
+          <td style="padding:10px 14px;font-weight:bold;color:#1a237e;">Configuration Tab Access Requested</td>
+          <td style="padding:10px 14px;">{_cfg_access_display}</td></tr>
     </table>
     <div style="background:#fff8e1;border-left:4px solid #ffc107;padding:12px 16px;
                 border-radius:0 6px 6px 0;margin:20px 0;">

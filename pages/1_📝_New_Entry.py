@@ -5,7 +5,7 @@ DocRegistry Pro - Phase 2
 
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
-from utils.telegram_sender import notify_new_entry
+from utils.notification_router import notify_new_entry
 from datetime import datetime, date, time
 import pandas as pd
 import yaml
@@ -195,7 +195,15 @@ def build_preview_df(entry_id="PREVIEW"):
     }])
 
 if clear_btn:
-    st.info("🗑️ Form cleared. You can change values above and submit again.")
+    for _k in [
+        "ne_district", "ne_sro",
+        "doc_type", "entry_date", "entry_time",
+        "party_name_1", "party1_mobile", "party_name_2",
+        "garvi_appli_no", "index_appli_no", "search_no",
+        "index_no", "title_status",
+    ]:
+        st.session_state.pop(_k, None)
+    st.rerun()
 
 if preview_btn and not submit_btn:
     st.info("👁️ Preview only – data is not saved to Google Sheets.")
@@ -258,6 +266,14 @@ if submit_btn:
                 st.markdown(f"**Created by:** `{username}` at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 st.markdown("### 📄 Saved Record")
                 st.dataframe(build_preview_df(entry_id), hide_index=True, use_container_width=True)
+                for _k in [
+                    "ne_district", "ne_sro",
+                    "doc_type", "entry_date", "entry_time",
+                    "party_name_1", "party1_mobile", "party_name_2",
+                    "garvi_appli_no", "index_appli_no", "search_no",
+                    "index_no", "title_status",
+                ]:
+                    st.session_state.pop(_k, None)
             else:
                 st.error("❌ Failed to save entry. Please try again.")
         except Exception as e:

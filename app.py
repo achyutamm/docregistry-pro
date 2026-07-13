@@ -17,6 +17,12 @@ from utils.sheets_cache import (
     get_user_activity_log_cached, clear_user_activity_log_cache,
 )
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
+from utils.config_manager import (
+    add_list_item, remove_list_item, add_sro_district, remove_sro_district,
+    set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
+    add_whatsapp_recipient, remove_whatsapp_recipient,
+    set_whatsapp_from_number, set_whatsapp_mode,
+)
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
@@ -99,11 +105,9 @@ if not auth.is_authenticated():
     st.title(f"🏛️ {_app_cfg.get('name', 'DocRegistry Pro')}")
     st.subheader(f"{_app_cfg.get('company', 'BK Mehta & Associates')} — {_app_cfg.get('tagline', 'Advocate Office Registry Management System')}")
 
-    # Show login directly after a successful request submission
+    # Show success banner above the normal Login / Request Access / Forgot Password tabs
     if st.session_state.pop("request_submitted", None):
         st.success("✅ Your request has been submitted! Please wait for admin approval. You can log in once approved.")
-        auth.login()
-        st.stop()
 
     # Show login directly after password reminder is sent
     if st.session_state.pop("fp_success", None):
@@ -158,6 +162,11 @@ if not auth.is_authenticated():
             su_fullname  = st.text_input("Full Name *", placeholder="e.g., Parag Mehta")
             su_email     = st.text_input("Email", placeholder="e.g., parag@example.com")
             su_role      = st.selectbox("Role *", ["Staff", "Admin"])
+            su_config_access = st.selectbox(
+                "Request Configuration Tab Access?", ["No", "Yes"],
+                help="The Configuration tab lets you manage shared dropdown lists "
+                     "(Document Types, SRO Offices, Banks, etc.). Admin approval is required."
+            )
             su_password  = st.text_input("Password *", type="password")
             su_confirm   = st.text_input("Confirm Password *", type="password")
             su_submit    = st.form_submit_button("📤 Submit Request", type="primary", use_container_width=True)
@@ -167,49 +176,63 @@ if not auth.is_authenticated():
                 st.error("❌ Username, Full Name and Password are required.")
             elif su_password != su_confirm:
                 st.error("❌ Passwords do not match.")
-            elif auth.username_exists(su_username.strip()):
-                st.error("❌ Username already exists. Please choose another.")
             else:
-                try:
-                    _sm = get_sheets_manager()
-                    from datetime import datetime as _dt
-                    _requested_date = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-                    _sm.add_user_request(
-                        username=su_username.strip(),
-                        full_name=su_fullname.strip(),
-                        email=su_email.strip(),
-                        role=su_role.lower(),
-                        password=su_password
-                    )
-                    clear_user_requests_cache()
-                    # Notify all admins (non-blocking)
+                _dup_errors = []
+                if auth.username_exists(su_username.strip()):
+                    _dup_errors.append("That username is already registered. Please choose another.")
+                if su_email.strip():
                     try:
-                        _admin_emails = config.get("email", {}).get("admin_emails", ["bkmehta.associate@gmail.com"])
-                        notify_admins_new_request(
-                            admin_emails=_admin_emails,
-                            full_name=su_fullname.strip(),
+                        if get_sheets_manager().email_exists(su_email.strip()):
+                            _dup_errors.append("That email address is already registered.")
+                    except Exception:
+                        pass
+
+                if _dup_errors:
+                    for _dup_err in _dup_errors:
+                        st.error(f"❌ {_dup_err}")
+                else:
+                    try:
+                        _sm = get_sheets_manager()
+                        from datetime import datetime as _dt
+                        _requested_date = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+                        _sm.add_user_request(
                             username=su_username.strip(),
-                            role=su_role,
+                            full_name=su_fullname.strip(),
                             email=su_email.strip(),
-                            requested_date=_requested_date,
+                            role=su_role.lower(),
+                            password=su_password,
+                            config_access_requested=su_config_access
                         )
-                    except Exception as _mail_ex:
-                        st.warning(f"⚠️ Request saved but admin notification email could not be sent: {_mail_ex}")
-                    # Send confirmation email to the registering user
-                    if su_email.strip():
+                        clear_user_requests_cache()
+                        # Notify all admins (non-blocking)
                         try:
-                            notify_user_registration_received(
-                                to_email=su_email.strip(),
+                            _admin_emails = config.get("email", {}).get("admin_emails", ["bkmehta.associate@gmail.com"])
+                            notify_admins_new_request(
+                                admin_emails=_admin_emails,
                                 full_name=su_fullname.strip(),
                                 username=su_username.strip(),
+                                role=su_role,
+                                email=su_email.strip(),
+                                requested_date=_requested_date,
+                                config_access_requested=su_config_access,
                             )
-                        except Exception:
-                            pass
-                    # Redirect to login page with success banner
-                    st.session_state["request_submitted"] = True
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"❌ Could not submit request: {ex}")
+                        except Exception as _mail_ex:
+                            st.warning(f"⚠️ Request saved but admin notification email could not be sent: {_mail_ex}")
+                        # Send confirmation email to the registering user
+                        if su_email.strip():
+                            try:
+                                notify_user_registration_received(
+                                    to_email=su_email.strip(),
+                                    full_name=su_fullname.strip(),
+                                    username=su_username.strip(),
+                                )
+                            except Exception:
+                                pass
+                        # Redirect to login page with success banner
+                        st.session_state["request_submitted"] = True
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"❌ Could not submit request: {ex}")
 
     st.stop()
 
@@ -229,6 +252,8 @@ st.sidebar.markdown(f"Role: **{user_info['role'].title()}**")
 _nav = ["🏠 Dashboard", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
 if user_info.get("role") == "admin":
     _nav.append("👥 User Management")
+if user_info.get("config_access", False):
+    _nav.append("⚙️ Configuration")
 
 page = st.sidebar.radio("Navigation", _nav, label_visibility="collapsed", key="nav_page")
 
@@ -1194,11 +1219,18 @@ elif page == "👥 User Management":
                     with st.container(border=True):
                         c1, c2, c3 = st.columns([3, 1, 1])
                         with c1:
+                            _cfg_requested = str(req.get("Config_Access_Requested", "No")) == "Yes"
                             st.markdown(
                                 f"**{req.get('Full_Name', '')}** (`{req.get('Username', '')}`)"
                                 f"  —  Role: `{req.get('Role', '').title()}`"
                                 f"  |  Email: {req.get('Email', '—')}"
                                 f"  |  Requested: {req.get('Requested_Date', '—')}"
+                                f"  |  ⚙️ Config Access Requested: **{'Yes' if _cfg_requested else 'No'}**"
+                            )
+                            grant_config_access = st.checkbox(
+                                "Grant Configuration Tab Access",
+                                value=_cfg_requested,
+                                key=f"grant_cfg_{req['Request_ID']}"
                             )
                         with c2:
                             if st.button("✅ Approve", key=f"approve_{req['Request_ID']}", use_container_width=True, type="primary"):
@@ -1207,7 +1239,8 @@ elif page == "👥 User Management":
                                         username=str(req["Username"]),
                                         password=str(req["Password"]),
                                         name=str(req["Full_Name"]),
-                                        role=str(req["Role"]).lower()
+                                        role=str(req["Role"]).lower(),
+                                        config_access=grant_config_access
                                     )
                                     sheets_manager.update_request_status(
                                         str(req["Request_ID"]), "Approved", username
@@ -1299,7 +1332,28 @@ elif page == "👥 User Management":
                     c1.markdown(f"**{udata.get('name', '')}**  `{uname}`")
                     c2.markdown(f"Role: **{udata.get('role','').title()}**")
                     with c3:
-                        st.markdown("")   # spacing
+                        _has_cfg_access = udata.get("config_access", False)
+                        _new_cfg_access = st.checkbox(
+                            "⚙️ Config Access", value=_has_cfg_access, key=f"cfgacc_{uname}"
+                        )
+                        if _new_cfg_access != _has_cfg_access:
+                            auth.set_user_config_access(uname, _new_cfg_access)
+                            try:
+                                sheets_manager.log_user_activity(
+                                    action="Config Access Granted" if _new_cfg_access else "Config Access Revoked",
+                                    username=uname,
+                                    full_name=udata.get("name", ""),
+                                    role=udata.get("role", ""),
+                                    performed_by=username,
+                                )
+                                clear_user_activity_log_cache()
+                            except Exception:
+                                pass
+                            st.toast(
+                                f"⚙️ Configuration access {'granted to' if _new_cfg_access else 'revoked from'} {uname}.",
+                                icon="⚙️"
+                            )
+                            st.rerun()
                     with c4:
                         if uname == username:
                             st.button("🔒 You", key=f"del_{uname}", disabled=True, use_container_width=True)
@@ -1362,3 +1416,304 @@ elif page == "👥 User Management":
                 st.dataframe(log_df[show_cols], use_container_width=True, hide_index=True)
         except Exception as ex:
             st.error(f"❌ Could not load activity log: {ex}")
+
+# =====================================================
+# CONFIGURATION (admin only)
+# =====================================================
+elif page == "⚙️ Configuration":
+
+    if not user_info.get("config_access", False):
+        st.error("⛔ You do not have access to this section.")
+        st.stop()
+
+    st.title("⚙️ Configuration")
+    st.markdown("Manage the dropdown options used across the app. Changes apply immediately.")
+
+    # Counter bumped after every successful change so input boxes reset to empty
+    if "cfg_widget_key" not in st.session_state:
+        st.session_state["cfg_widget_key"] = 0
+    cfgk = st.session_state["cfg_widget_key"]
+
+    # Flash message shown once, right after a change is saved
+    if "cfg_flash" in st.session_state:
+        _flash_kind, _flash_msg = st.session_state.pop("cfg_flash")
+        getattr(st, _flash_kind)(_flash_msg)
+
+    st.divider()
+
+    def _render_list_editor(items, path, caption, key_prefix, label):
+        st.caption(caption)
+        if not items:
+            st.info("No items yet. Add one below.")
+        else:
+            cols_per_row = 3
+            for i in range(0, len(items), cols_per_row):
+                row_items = items[i:i + cols_per_row]
+                cols = st.columns(cols_per_row)
+                for col, item in zip(cols, row_items):
+                    with col:
+                        c1, c2 = st.columns([4, 1])
+                        c1.markdown(f"`{item}`")
+                        if c2.button("🗑️", key=f"{key_prefix}_del_{item}", help=f"Remove {item}"):
+                            try:
+                                remove_list_item(path, item)
+                                st.session_state["cfg_flash"] = ("success", f"🗑️ Removed '{item}' from {label}.")
+                                st.session_state["cfg_widget_key"] += 1
+                                st.rerun()
+                            except ValueError as ex:
+                                st.error(f"❌ {ex}")
+
+        st.markdown("")
+        c1, c2 = st.columns([4, 1])
+        new_value = c1.text_input(
+            "Add new", key=f"{key_prefix}_new_{cfgk}",
+            label_visibility="collapsed", placeholder="Type a new value..."
+        )
+        if c2.button("➕ Add", key=f"{key_prefix}_add", use_container_width=True):
+            try:
+                add_list_item(path, new_value)
+                st.session_state["cfg_flash"] = ("success", f"✅ Added '{new_value.strip()}' to {label}.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+    # Session-state-based tab switcher (st.tabs resets to the first tab on
+    # rerun whenever the element count above it changes, e.g. the flash
+    # message appearing/disappearing — so we track the active tab ourselves).
+    if "cfg_active_tab" not in st.session_state:
+        st.session_state["cfg_active_tab"] = "doc"
+
+    _cfg_tabs = {
+        "doc":       "📄 Document Types",
+        "party2":    "🏦 Party Name 2 (Banks)",
+        "sro":       "🏢 SRO Offices",
+        "email":     "📧 Admin Emails",
+        "telegram":  "📢 Telegram",
+        "whatsapp":  "📱 WhatsApp",
+    }
+    _cfg_tab_cols = st.columns(len(_cfg_tabs))
+    for _cfg_col, (_cfg_key, _cfg_label) in zip(_cfg_tab_cols, _cfg_tabs.items()):
+        with _cfg_col:
+            if st.button(
+                _cfg_label, key=f"cfgtab_{_cfg_key}", use_container_width=True,
+                type="primary" if st.session_state["cfg_active_tab"] == _cfg_key else "secondary"
+            ):
+                st.session_state["cfg_active_tab"] = _cfg_key
+                st.rerun()
+
+    st.divider()
+    _active_cfg_tab = st.session_state["cfg_active_tab"]
+
+    if _active_cfg_tab == "doc":
+        st.subheader("Document Types")
+        _render_list_editor(
+            DOCUMENT_TYPES, ["document_types"],
+            "Controls the 'Document Type' dropdown on the New Entry form.",
+            "doctype", "Document Types"
+        )
+
+    elif _active_cfg_tab == "party2":
+        st.subheader("Party Name 2 (Banks / Co-operatives)")
+        _render_list_editor(
+            PARTY_NAME_2_OPTIONS, ["party_name_2_options"],
+            "Controls the 'Party Name 2' dropdown on the New Entry form.",
+            "party2", "Party Name 2"
+        )
+
+    elif _active_cfg_tab == "sro":
+        st.subheader("SRO Offices")
+        st.caption("Controls the SRO dropdown on the New Entry form, grouped by district.")
+
+        if not SRO_CONFIG:
+            st.info("No districts configured yet. Add one below.")
+        else:
+            districts = list(SRO_CONFIG.keys())
+            selected_district = st.selectbox("District", districts, key="cfg_sro_district")
+            sros = SRO_CONFIG.get(selected_district, [])
+
+            if not sros:
+                st.info(f"No SRO offices in '{selected_district}' yet.")
+            else:
+                for sro in sros:
+                    c1, c2 = st.columns([5, 1])
+                    c1.markdown(f"`{sro}`")
+                    if c2.button("🗑️", key=f"sro_del_{selected_district}_{sro}", help=f"Remove {sro}"):
+                        try:
+                            remove_list_item(["sro_options", selected_district], sro)
+                            st.session_state["cfg_flash"] = ("success", f"🗑️ Removed '{sro}' from {selected_district}.")
+                            st.session_state["cfg_widget_key"] += 1
+                            st.rerun()
+                        except ValueError as ex:
+                            st.error(f"❌ {ex}")
+
+            st.markdown("")
+            c1, c2 = st.columns([4, 1])
+            new_sro = c1.text_input(
+                "Add SRO", key=f"sro_new_{cfgk}", label_visibility="collapsed",
+                placeholder=f"New SRO office in {selected_district}..."
+            )
+            if c2.button("➕ Add", key="sro_add", use_container_width=True):
+                try:
+                    add_list_item(["sro_options", selected_district], new_sro)
+                    st.session_state["cfg_flash"] = ("success", f"✅ Added '{new_sro.strip()}' to {selected_district}.")
+                    st.session_state["cfg_widget_key"] += 1
+                    st.rerun()
+                except ValueError as ex:
+                    st.error(f"❌ {ex}")
+
+            st.divider()
+            if not sros:
+                if st.button("🗑️ Remove District", key="sro_district_del"):
+                    try:
+                        remove_sro_district(selected_district)
+                        st.session_state["cfg_flash"] = ("success", f"🗑️ Removed district '{selected_district}'.")
+                        st.session_state["cfg_widget_key"] += 1
+                        st.rerun()
+                    except ValueError as ex:
+                        st.error(f"❌ {ex}")
+            else:
+                st.caption("Remove all SRO offices from this district to enable deleting it.")
+
+        with st.expander("➕ Add New District"):
+            c1, c2 = st.columns([4, 1])
+            new_district = c1.text_input(
+                "District name", key=f"sro_district_new_{cfgk}", label_visibility="collapsed",
+                placeholder="New district name..."
+            )
+            if c2.button("➕ Add District", key="sro_district_add", use_container_width=True):
+                try:
+                    add_sro_district(new_district)
+                    st.session_state["cfg_flash"] = ("success", f"✅ Added district '{new_district.strip()}'.")
+                    st.session_state["cfg_widget_key"] += 1
+                    st.rerun()
+                except ValueError as ex:
+                    st.error(f"❌ {ex}")
+
+    elif _active_cfg_tab == "email":
+        st.subheader("Admin Notification Emails")
+        _render_list_editor(
+            config.get("email", {}).get("admin_emails", []), ["email", "admin_emails"],
+            "These addresses are notified by email whenever a new user requests access.",
+            "adminemail", "Admin Notification Emails"
+        )
+
+    elif _active_cfg_tab == "telegram":
+        st.subheader("Telegram Notifications")
+        st.caption(
+            "Turns all Telegram notifications (new entries, daily appointments, etc.) on or off. "
+            "The bot token and chat ID are configured separately for security and aren't editable here."
+        )
+        telegram_enabled = config.get("telegram", {}).get("enabled", True)
+        new_telegram_value = st.checkbox(
+            "Enable Telegram notifications", value=telegram_enabled, key="cfg_telegram_enabled"
+        )
+        if st.button("💾 Save", key="cfg_telegram_save"):
+            set_telegram_enabled(new_telegram_value)
+            st.session_state["cfg_flash"] = ("success", "✅ Telegram notification setting saved.")
+            st.rerun()
+
+    elif _active_cfg_tab == "whatsapp":
+        st.subheader("WhatsApp Notifications (Twilio)")
+
+        # ── Notification Provider ───────────────────────────────────────
+        st.markdown("#### 🔀 Notification Provider")
+        st.caption("Choose which channel sends new-entry and daily appointment notifications.")
+        _wa_cfg = config.get("whatsapp", {})
+        _cur_provider = config.get("notifications", {}).get("provider", "telegram")
+        _new_provider = st.selectbox(
+            "Active Notification Provider",
+            options=["telegram", "whatsapp", "both"],
+            index=["telegram", "whatsapp", "both"].index(_cur_provider),
+            format_func=lambda x: {"telegram": "📢 Telegram only", "whatsapp": "📱 WhatsApp only", "both": "📢 + 📱 Both"}[x],
+            key="cfg_notif_provider"
+        )
+        if st.button("💾 Save Provider", key="cfg_provider_save"):
+            set_notifications_provider(_new_provider)
+            st.session_state["cfg_flash"] = ("success", f"✅ Notification provider set to '{_new_provider}'.")
+            st.rerun()
+
+        st.divider()
+
+        # ── WhatsApp Enable/Disable ─────────────────────────────────────
+        st.markdown("#### ⚙️ WhatsApp Settings")
+        _wa_enabled = _wa_cfg.get("enabled", False)
+        _new_wa_enabled = st.checkbox("Enable WhatsApp notifications", value=_wa_enabled, key="cfg_wa_enabled")
+        if st.button("💾 Save", key="cfg_wa_enabled_save"):
+            set_whatsapp_enabled(_new_wa_enabled)
+            st.session_state["cfg_flash"] = ("success", "✅ WhatsApp enabled setting saved.")
+            st.rerun()
+
+        st.divider()
+
+        # ── Mode (Sandbox / Production) ─────────────────────────────────
+        st.markdown("#### 🧪 Mode")
+        _wa_mode = _wa_cfg.get("mode", "sandbox")
+        _new_mode = st.selectbox(
+            "Mode", ["sandbox", "production"],
+            index=0 if _wa_mode == "sandbox" else 1,
+            format_func=lambda x: "🧪 Sandbox (Twilio test number)" if x == "sandbox" else "🚀 Production (your registered number)",
+            key="cfg_wa_mode"
+        )
+        if st.button("💾 Save Mode", key="cfg_wa_mode_save"):
+            set_whatsapp_mode(_new_mode)
+            st.session_state["cfg_flash"] = ("success", f"✅ WhatsApp mode set to '{_new_mode}'.")
+            st.rerun()
+
+        st.divider()
+
+        # ── From Number ─────────────────────────────────────────────────
+        st.markdown("#### 📞 Sender Number (From)")
+        st.caption("Sandbox: use `+14155238886`. Production: your registered WhatsApp Business number.")
+        _wa_from = _wa_cfg.get("from_number", "")
+        c1, c2 = st.columns([4, 1])
+        _new_from = c1.text_input("From number", value=_wa_from, key=f"cfg_wa_from_{cfgk}", placeholder="+14155238886")
+        if c2.button("💾 Save", key="cfg_wa_from_save", use_container_width=True):
+            try:
+                set_whatsapp_from_number(_new_from)
+                st.session_state["cfg_flash"] = ("success", f"✅ From number updated to '{_new_from}'.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+        st.divider()
+
+        # ── Recipient Numbers ───────────────────────────────────────────
+        st.markdown("#### 📋 Recipient Numbers")
+        st.caption("Numbers that receive WhatsApp notifications. Include country code, e.g. `+919876543210`.")
+        _wa_recipients = _wa_cfg.get("recipient_numbers", [])
+        if not _wa_recipients:
+            st.info("No recipient numbers yet. Add one below.")
+        else:
+            for _rnum in _wa_recipients:
+                _rc1, _rc2 = st.columns([5, 1])
+                _rc1.markdown(f"`{_rnum}`")
+                if _rc2.button("🗑️", key=f"wa_del_{_rnum}", help=f"Remove {_rnum}"):
+                    try:
+                        remove_whatsapp_recipient(_rnum)
+                        st.session_state["cfg_flash"] = ("success", f"🗑️ Removed {_rnum} from WhatsApp recipients.")
+                        st.session_state["cfg_widget_key"] += 1
+                        st.rerun()
+                    except ValueError as ex:
+                        st.error(f"❌ {ex}")
+
+        _rc1, _rc2 = st.columns([4, 1])
+        _new_recipient = _rc1.text_input(
+            "Add recipient", key=f"wa_recipient_new_{cfgk}",
+            label_visibility="collapsed", placeholder="+919876543210"
+        )
+        if _rc2.button("➕ Add", key="wa_recipient_add", use_container_width=True):
+            try:
+                add_whatsapp_recipient(_new_recipient)
+                st.session_state["cfg_flash"] = ("success", f"✅ Added {_new_recipient.strip()} to WhatsApp recipients.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+        st.divider()
+        st.caption(
+            "🔐 Twilio Account SID and Auth Token are stored securely in the `.env` file "
+            "and are not editable from this UI."
+        )

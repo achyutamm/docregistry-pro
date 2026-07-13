@@ -10,7 +10,7 @@ Usage:
 """
 
 from utils.sheets_manager import SheetsManager
-from utils.telegram_sender import notify_today_appointments
+from utils.notification_router import notify_today_appointments
 
 
 def main():

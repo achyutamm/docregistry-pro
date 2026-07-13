@@ -77,6 +77,7 @@ sro_options:
   - S.R.O.- Mandal
   - S.R.O.- Detroj
   - S.R.O.- Dholera
+  - S.R.O Kathwada
   Gandhinagar:
   - Gandhinagar Zone- 1
   - Gandhinagar Zone- 2
@@ -95,18 +96,32 @@ sro_options:
   - S.R.O.- Becharaji
   - S.R.O.- Vadnagar
   - S.R.O.- Jotana
+notifications:
+  provider: both
 telegram:
   enabled: true
+whatsapp:
+  enabled: true
+  provider: baileys
+  baileys_api_url: http://localhost:3001
+  group_id: '120363409369498081@g.us'
+  from_number: '+14155238886'
+  mode: sandbox
+  production_number: '+17017655675'
+  recipient_numbers:
+  - '+919824551099'
 users:
   Akhilb:
     name: Akhil Barot
     password: pbkdf2_sha256$260000$07eceeb2e9dcfa8c1f85692760052395$c52bd0fd9c75d01e7c1e3951a1a47e51617796804f42a5be1ec12217ed0150b2
     role: staff
   achyutam:
+    config_access: false
     name: Achyutam Mehta
-    password: pbkdf2_sha256$260000$d42ac3ec9f3e933329750f6d0202cab9$34166e1cc33289c31e5b61ff82674434af1d40bc12ddccaba7f899985f7784c2
+    password: pbkdf2_sha256$260000$ebf35973aeb935bb5771b612bab983d3$e529516db2bcf5e93f0c64282f3eeb3e80b7bd141fe564b4e457da50a7a3b787
     role: staff
   admin:
+    config_access: true
     name: Admin User
     password: pbkdf2_sha256$260000$0268dfb3b11a645eafd33b322a8cf409$c1f7c87f81a6cb53ceea6fa511952debd130c3f9346492d97d1a1e07cdeba897
     role: admin
