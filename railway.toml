@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "cd baileys_service && node server.js"
+restartPolicyType = "always"
