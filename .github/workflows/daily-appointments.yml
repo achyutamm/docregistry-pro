@@ -27,8 +27,12 @@ jobs:
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
 
+      - name: Install twilio
+        run: pip install twilio
+
       - name: Run daily appointments notifier
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BAILEYS_API_KEY: ${{ secrets.BAILEYS_API_KEY }}
         run: python daily_appointments_notifier.py
