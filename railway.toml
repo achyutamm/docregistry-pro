@@ -1,7 +1,6 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "baileys_service/Dockerfile"
-dockerContextDir = "baileys_service"
 
 [deploy]
 restartPolicyType = "always"
