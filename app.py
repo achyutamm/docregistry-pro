@@ -1229,43 +1229,69 @@ elif page == "👥 User Management":
             else:
                 st.warning(f"⏳ {len(pending_df)} pending request(s) awaiting approval.")
                 for _, req in pending_df.iterrows():
+                    _req_id      = str(req["Request_ID"])
+                    _req_name    = str(req.get("Full_Name", ""))
+                    _req_uname   = str(req.get("Username", ""))
+                    _req_email   = str(req.get("Email", "—"))
+                    _req_date    = str(req.get("Requested_Date", "—"))
+                    _req_role    = str(req.get("Role", "staff")).lower()
+                    _cfg_req     = str(req.get("Config_Access_Requested", "No")) == "Yes"
+
                     with st.container(border=True):
-                        c1, c2, c3 = st.columns([3, 1, 1])
-                        with c1:
-                            _cfg_requested = str(req.get("Config_Access_Requested", "No")) == "Yes"
-                            st.markdown(
-                                f"**{req.get('Full_Name', '')}** (`{req.get('Username', '')}`)"
-                                f"  —  Role: `{req.get('Role', '').title()}`"
-                                f"  |  Email: {req.get('Email', '—')}"
-                                f"  |  Requested: {req.get('Requested_Date', '—')}"
-                                f"  |  ⚙️ Config Access Requested: **{'Yes' if _cfg_requested else 'No'}**"
+                        # Request summary
+                        st.markdown(
+                            f"**{_req_name}** (`{_req_uname}`)  |  "
+                            f"Email: {_req_email}  |  Requested: {_req_date}"
+                        )
+                        st.caption(
+                            f"Requested role: **{_req_role.capitalize()}**  |  "
+                            f"Requested config access: **{'Yes' if _cfg_req else 'No'}**"
+                        )
+                        st.markdown("**Admin Decision:**")
+
+                        da, db, dc, dd = st.columns([2, 2, 1, 1])
+
+                        # Admin picks the role to grant (may differ from what was requested)
+                        with da:
+                            _role_opts = ["staff", "admin"]
+                            _role_default = _role_opts.index(_req_role) if _req_role in _role_opts else 0
+                            grant_role = st.selectbox(
+                                "Grant Role",
+                                _role_opts,
+                                index=_role_default,
+                                key=f"grant_role_{_req_id}",
+                                format_func=lambda r: r.capitalize(),
                             )
+
+                        # Admin independently decides config access
+                        with db:
+                            st.write("")  # vertical align
+                            st.write("")
                             grant_config_access = st.checkbox(
-                                "Grant Configuration Tab Access",
-                                value=_cfg_requested,
-                                key=f"grant_cfg_{req['Request_ID']}"
+                                "⚙️ Grant Config Access",
+                                value=False,  # always starts unchecked — admin must consciously tick it
+                                key=f"grant_cfg_{_req_id}",
                             )
-                        with c2:
-                            if st.button("✅ Approve", key=f"approve_{req['Request_ID']}", use_container_width=True, type="primary"):
+
+                        with dc:
+                            if st.button("✅ Approve", key=f"approve_{_req_id}", use_container_width=True, type="primary"):
                                 try:
                                     auth.add_user_to_config(
-                                        username=str(req["Username"]),
+                                        username=_req_uname,
                                         password=str(req["Password"]),
-                                        name=str(req["Full_Name"]),
-                                        role=str(req["Role"]).lower(),
-                                        config_access=grant_config_access
+                                        name=_req_name,
+                                        role=grant_role,
+                                        config_access=grant_config_access,
                                     )
-                                    sheets_manager.update_request_status(
-                                        str(req["Request_ID"]), "Approved", username
-                                    )
+                                    sheets_manager.update_request_status(_req_id, "Approved", username)
                                     clear_user_requests_cache()
-                                    st.toast(f"✅ {req['Full_Name']} approved and added!", icon="✅")
+                                    st.toast(f"✅ {_req_name} approved as {grant_role.capitalize()}!", icon="✅")
                                     try:
                                         sheets_manager.log_user_activity(
                                             action="Approved",
-                                            username=str(req.get("Username", "")),
-                                            full_name=str(req.get("Full_Name", "")),
-                                            role=str(req.get("Role", "")),
+                                            username=_req_uname,
+                                            full_name=_req_name,
+                                            role=grant_role,
                                             performed_by=username,
                                         )
                                         clear_user_activity_log_cache()
@@ -1273,38 +1299,36 @@ elif page == "👥 User Management":
                                         pass
                                     try:
                                         notify_user_request_status(
-                                            to_email=str(req.get("Email", "")),
-                                            full_name=str(req.get("Full_Name", "")),
-                                            username=str(req.get("Username", "")),
+                                            to_email=_req_email,
+                                            full_name=_req_name,
+                                            username=_req_uname,
                                             status="Approved",
                                         )
                                     except Exception:
                                         pass
                                     try:
                                         notify_user_approved(
-                                            full_name=str(req.get("Full_Name", "")),
-                                            username=str(req.get("Username", "")),
-                                            role=str(req.get("Role", "")),
+                                            full_name=_req_name,
+                                            username=_req_uname,
+                                            role=grant_role,
                                         )
                                     except Exception:
                                         pass
                                     st.rerun()
                                 except Exception as ex:
                                     st.error(f"❌ {ex}")
-                        with c3:
-                            if st.button("❌ Reject", key=f"reject_{req['Request_ID']}", use_container_width=True):
+                        with dd:
+                            if st.button("❌ Reject", key=f"reject_{_req_id}", use_container_width=True):
                                 try:
-                                    sheets_manager.update_request_status(
-                                        str(req["Request_ID"]), "Rejected", username
-                                    )
+                                    sheets_manager.update_request_status(_req_id, "Rejected", username)
                                     clear_user_requests_cache()
-                                    st.toast(f"Request for {req['Full_Name']} rejected.", icon="❌")
+                                    st.toast(f"Request for {_req_name} rejected.", icon="❌")
                                     try:
                                         sheets_manager.log_user_activity(
                                             action="Rejected",
-                                            username=str(req.get("Username", "")),
-                                            full_name=str(req.get("Full_Name", "")),
-                                            role=str(req.get("Role", "")),
+                                            username=_req_uname,
+                                            full_name=_req_name,
+                                            role=_req_role,
                                             performed_by=username,
                                         )
                                         clear_user_activity_log_cache()
@@ -1312,18 +1336,18 @@ elif page == "👥 User Management":
                                         pass
                                     try:
                                         notify_user_request_status(
-                                            to_email=str(req.get("Email", "")),
-                                            full_name=str(req.get("Full_Name", "")),
-                                            username=str(req.get("Username", "")),
+                                            to_email=_req_email,
+                                            full_name=_req_name,
+                                            username=_req_uname,
                                             status="Rejected",
                                         )
                                     except Exception:
                                         pass
                                     try:
                                         notify_user_rejected(
-                                            full_name=str(req.get("Full_Name", "")),
-                                            username=str(req.get("Username", "")),
-                                            role=str(req.get("Role", "")),
+                                            full_name=_req_name,
+                                            username=_req_uname,
+                                            role=_req_role,
                                         )
                                     except Exception:
                                         pass
