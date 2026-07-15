@@ -17,7 +17,11 @@ from utils.sheets_cache import (
     get_user_activity_log_cached, clear_user_activity_log_cache,
 )
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
-from utils.notification_router import notify_new_entry, notify_today_appointments, notify_user_approved, notify_user_requested, notify_user_rejected
+from utils.notification_router import (
+    notify_new_entry, notify_today_appointments,
+    notify_user_approved, notify_user_requested, notify_user_rejected,
+    notify_role_changed, notify_config_access_changed, notify_user_deleted,
+)
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
     set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
@@ -1343,7 +1347,7 @@ elif page == "👥 User Management":
 
     with tab_users:
         st.subheader("Active Users")
-        st.caption("You cannot delete your own account.")
+        st.caption("Change role or config access instantly. You cannot delete your own account.")
         with open("config.yaml", "r") as f:
             _cfg = yaml.safe_load(f)
         active_users = _cfg.get("users", {})
@@ -1352,12 +1356,54 @@ elif page == "👥 User Management":
             st.info("No active users found.")
         else:
             for uname, udata in active_users.items():
+                _cur_role = udata.get("role", "staff").lower()
+                _cur_name = udata.get("name", uname)
+                _has_cfg_access = udata.get("config_access", False)
+
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-                    c1.markdown(f"**{udata.get('name', '')}**  `{uname}`")
-                    c2.markdown(f"Role: **{udata.get('role','').title()}**")
+
+                    # Name + username
+                    c1.markdown(f"**{_cur_name}**  \n`{uname}`")
+
+                    # Role dropdown — fires immediately on change
+                    with c2:
+                        _role_options = ["admin", "staff"]
+                        _role_idx = _role_options.index(_cur_role) if _cur_role in _role_options else 1
+                        _new_role = st.selectbox(
+                            "Role", _role_options,
+                            index=_role_idx,
+                            key=f"role_{uname}",
+                            format_func=lambda r: r.capitalize(),
+                        )
+                        if _new_role != _cur_role:
+                            auth.set_user_role(uname, _new_role)
+                            try:
+                                sheets_manager.log_user_activity(
+                                    action=f"Role Changed to {_new_role.capitalize()}",
+                                    username=uname,
+                                    full_name=_cur_name,
+                                    role=_new_role,
+                                    performed_by=username,
+                                )
+                                clear_user_activity_log_cache()
+                            except Exception:
+                                pass
+                            try:
+                                notify_role_changed(
+                                    full_name=_cur_name,
+                                    username=uname,
+                                    old_role=_cur_role,
+                                    new_role=_new_role,
+                                    changed_by=username,
+                                )
+                            except Exception:
+                                pass
+                            st.toast(f"🔄 {_cur_name}'s role changed to {_new_role.capitalize()}.", icon="🔄")
+                            st.rerun()
+
+                    # Config access checkbox
                     with c3:
-                        _has_cfg_access = udata.get("config_access", False)
                         _new_cfg_access = st.checkbox(
                             "⚙️ Config Access", value=_has_cfg_access, key=f"cfgacc_{uname}"
                         )
@@ -1367,18 +1413,29 @@ elif page == "👥 User Management":
                                 sheets_manager.log_user_activity(
                                     action="Config Access Granted" if _new_cfg_access else "Config Access Revoked",
                                     username=uname,
-                                    full_name=udata.get("name", ""),
-                                    role=udata.get("role", ""),
+                                    full_name=_cur_name,
+                                    role=_cur_role,
                                     performed_by=username,
                                 )
                                 clear_user_activity_log_cache()
                             except Exception:
                                 pass
+                            try:
+                                notify_config_access_changed(
+                                    full_name=_cur_name,
+                                    username=uname,
+                                    granted=_new_cfg_access,
+                                    changed_by=username,
+                                )
+                            except Exception:
+                                pass
                             st.toast(
-                                f"⚙️ Configuration access {'granted to' if _new_cfg_access else 'revoked from'} {uname}.",
+                                f"⚙️ Config access {'granted to' if _new_cfg_access else 'revoked from'} {uname}.",
                                 icon="⚙️"
                             )
                             st.rerun()
+
+                    # Delete button (disabled for own account)
                     with c4:
                         if uname == username:
                             st.button("🔒 You", key=f"del_{uname}", disabled=True, use_container_width=True)
@@ -1386,9 +1443,9 @@ elif page == "👥 User Management":
                             if st.button("🗑️ Delete", key=f"del_{uname}", type="secondary", use_container_width=True):
                                 st.session_state[f"confirm_del_{uname}"] = True
 
-                    # Confirmation step
+                    # Confirmation step for delete
                     if st.session_state.get(f"confirm_del_{uname}"):
-                        st.warning(f"⚠️ Are you sure you want to delete **{udata.get('name','')}** (`{uname}`)? This cannot be undone.")
+                        st.warning(f"⚠️ Are you sure you want to delete **{_cur_name}** (`{uname}`)? This cannot be undone.")
                         conf1, conf2 = st.columns(2)
                         with conf1:
                             if st.button("✅ Yes, Delete", key=f"yes_del_{uname}", type="primary", use_container_width=True):
@@ -1398,11 +1455,20 @@ elif page == "👥 User Management":
                                         sheets_manager.log_user_activity(
                                             action="Deleted",
                                             username=uname,
-                                            full_name=udata.get("name", ""),
-                                            role=udata.get("role", ""),
+                                            full_name=_cur_name,
+                                            role=_cur_role,
                                             performed_by=username,
                                         )
                                         clear_user_activity_log_cache()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        notify_user_deleted(
+                                            full_name=_cur_name,
+                                            username=uname,
+                                            role=_cur_role,
+                                            deleted_by=username,
+                                        )
                                     except Exception:
                                         pass
                                     st.session_state.pop(f"confirm_del_{uname}", None)

@@ -194,6 +194,19 @@ class SimpleAuth:
             st.session_state.user_info = self.users[username]
         return True
 
+    def set_user_role(self, username, new_role: str, config_file="config.yaml"):
+        with open(config_file, "r") as f:
+            cfg = yaml.safe_load(f)
+        if username not in cfg.get("users", {}):
+            return False
+        cfg["users"][username]["role"] = new_role.lower()
+        with open(config_file, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+        self.users = cfg["users"]
+        if st.session_state.get("username") == username:
+            st.session_state.user_info = self.users[username]
+        return True
+
     def remove_user_from_config(self, username, config_file="config.yaml"):
         with open(config_file, "r") as f:
             cfg = yaml.safe_load(f)

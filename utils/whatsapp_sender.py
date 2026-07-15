@@ -167,6 +167,56 @@ def notify_today_appointments(appointments: list):
             pass
 
 
+def notify_role_changed(full_name: str, username: str, old_role: str, new_role: str, changed_by: str):
+    if not _enabled():
+        return
+    body = (
+        f"🔄 *User Role Updated — DocRegistry Pro*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Role Changed:* {old_role.capitalize()} → {new_role.capitalize()}\n"
+        f"*Changed By:* {changed_by}"
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
+
+
+def notify_config_access_changed(full_name: str, username: str, granted: bool, changed_by: str):
+    if not _enabled():
+        return
+    action = "granted to" if granted else "revoked from"
+    icon = "✅" if granted else "🚫"
+    body = (
+        f"{icon} *Config Access {('Granted' if granted else 'Revoked')} — DocRegistry Pro*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Configuration Tab Access:* {'Granted ✅' if granted else 'Revoked 🚫'}\n"
+        f"*Changed By:* {changed_by}"
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
+
+
+def notify_user_deleted(full_name: str, username: str, role: str, deleted_by: str):
+    if not _enabled():
+        return
+    body = (
+        f"🗑️ *User Deleted — DocRegistry Pro*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Role:* {role.capitalize()}\n"
+        f"*Deleted By:* {deleted_by}"
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
+
+
 def notify_user_requested(full_name: str, username: str, role: str):
     if not _enabled():
         return

@@ -38,6 +38,33 @@ def notify_new_entry(record: dict):
             pass
 
 
+def notify_role_changed(full_name: str, username: str, old_role: str, new_role: str, changed_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_role_changed as _wa
+            _wa(full_name, username, old_role, new_role, changed_by)
+        except Exception:
+            pass
+
+
+def notify_config_access_changed(full_name: str, username: str, granted: bool, changed_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_config_access_changed as _wa
+            _wa(full_name, username, granted, changed_by)
+        except Exception:
+            pass
+
+
+def notify_user_deleted(full_name: str, username: str, role: str, deleted_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_user_deleted as _wa
+            _wa(full_name, username, role, deleted_by)
+        except Exception:
+            pass
+
+
 def notify_user_requested(full_name: str, username: str, role: str):
     if _telegram_enabled():
         try:
