@@ -167,6 +167,38 @@ def notify_today_appointments(appointments: list):
             pass
 
 
+def notify_user_requested(full_name: str, username: str, role: str):
+    if not _enabled():
+        return
+    body = (
+        f"🔔 *New Access Request — DocRegistry Pro*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Role Requested:* {role.capitalize()}\n\n"
+        f"Admin, please review and take necessary action."
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
+
+
+def notify_user_rejected(full_name: str, username: str, role: str):
+    if not _enabled():
+        return
+    body = (
+        f"❌ *Access Request Rejected — DocRegistry Pro*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Role:* {role.capitalize()}\n\n"
+        f"This user's request has been rejected by the admin."
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
+
+
 def notify_user_approved(full_name: str, username: str, role: str):
     if not _enabled():
         return

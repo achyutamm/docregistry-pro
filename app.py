@@ -17,7 +17,7 @@ from utils.sheets_cache import (
     get_user_activity_log_cached, clear_user_activity_log_cache,
 )
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
-from utils.notification_router import notify_new_entry, notify_today_appointments, notify_user_approved
+from utils.notification_router import notify_new_entry, notify_today_appointments, notify_user_approved, notify_user_requested, notify_user_rejected
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
     set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
@@ -229,6 +229,14 @@ if not auth.is_authenticated():
                                 )
                             except Exception:
                                 pass
+                        try:
+                            notify_user_requested(
+                                full_name=su_fullname.strip(),
+                                username=su_username.strip(),
+                                role=su_role,
+                            )
+                        except Exception:
+                            pass
                         # Redirect to login page with success banner
                         st.session_state["request_submitted"] = True
                         st.rerun()
@@ -1304,6 +1312,14 @@ elif page == "👥 User Management":
                                             full_name=str(req.get("Full_Name", "")),
                                             username=str(req.get("Username", "")),
                                             status="Rejected",
+                                        )
+                                    except Exception:
+                                        pass
+                                    try:
+                                        notify_user_rejected(
+                                            full_name=str(req.get("Full_Name", "")),
+                                            username=str(req.get("Username", "")),
+                                            role=str(req.get("Role", "")),
                                         )
                                     except Exception:
                                         pass
