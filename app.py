@@ -146,6 +146,10 @@ if not auth.is_authenticated():
                     if _reg_email.lower() == fp_email.strip().lower():
                         _new_password = generate_temp_password()
                         auth.set_user_password(fp_username.strip(), _new_password)
+                        try:
+                            _fp_sm.update_user_plain_password(fp_username.strip(), _new_password)
+                        except Exception:
+                            pass
                         send_password_reminder(
                             to_email  = _reg_email,
                             full_name = _user_data.get("name", fp_username.strip()),
@@ -1375,6 +1379,7 @@ elif page == "👥 User Management":
         with open("config.yaml", "r") as f:
             _cfg = yaml.safe_load(f)
         active_users = _cfg.get("users", {})
+        _au_sm = get_sheets_manager()
 
         if not active_users:
             st.info("No active users found.")
@@ -1387,8 +1392,16 @@ elif page == "👥 User Management":
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
 
-                    # Name + username
-                    c1.markdown(f"**{_cur_name}**  \n`{uname}`")
+                    # Name + username + password (show/hide)
+                    with c1:
+                        st.markdown(f"**{_cur_name}**  \n`{uname}`")
+                        _show_key = f"show_pw_{uname}"
+                        if st.button("👁️ Show Password" if not st.session_state.get(_show_key) else "🙈 Hide Password",
+                                     key=f"btn_pw_{uname}", use_container_width=True):
+                            st.session_state[_show_key] = not st.session_state.get(_show_key, False)
+                        if st.session_state.get(_show_key):
+                            _plain_pw = _au_sm.get_user_plain_password(uname)
+                            st.code(_plain_pw if _plain_pw else "— not on record —")
 
                     # Role dropdown — fires immediately on change
                     with c2:

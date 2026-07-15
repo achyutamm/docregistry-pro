@@ -350,6 +350,38 @@ class SheetsManager:
             pass
         return ""
 
+    def get_user_plain_password(self, username: str) -> str:
+        """Return the most-recent plain-text password stored for a username in User_Requests."""
+        try:
+            records = self.user_requests_sheet.get_all_records(
+                expected_headers=self._USER_REQUEST_HEADERS
+            )
+            # Walk in reverse so a later password-reset row wins over the original request
+            for row in reversed(records):
+                if str(row.get("Username", "")).strip().lower() == username.strip().lower():
+                    return str(row.get("Password", "")).strip()
+        except Exception:
+            pass
+        return ""
+
+    def update_user_plain_password(self, username: str, new_password: str) -> bool:
+        """Update the Password cell for the most-recent row matching username."""
+        try:
+            records = self.user_requests_sheet.get_all_records(
+                expected_headers=self._USER_REQUEST_HEADERS
+            )
+            # Find last matching row (row index in sheet = list index + 2 for header)
+            match_row = None
+            for i, row in enumerate(records, start=2):
+                if str(row.get("Username", "")).strip().lower() == username.strip().lower():
+                    match_row = i
+            if match_row:
+                self.user_requests_sheet.update_cell(match_row, 6, new_password)  # col 6 = Password
+                return True
+        except Exception:
+            pass
+        return False
+
     def update_request_status(self, request_id, status, approved_by=""):
         records = self.user_requests_sheet.get_all_records(
             expected_headers=self._USER_REQUEST_HEADERS
