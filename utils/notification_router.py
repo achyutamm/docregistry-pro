@@ -38,6 +38,21 @@ def notify_new_entry(record: dict):
             pass
 
 
+def notify_user_approved(full_name: str, username: str, role: str):
+    if _telegram_enabled():
+        try:
+            from utils.telegram_sender import notify_user_approved as _tg
+            _tg(full_name, username, role)
+        except Exception:
+            pass
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_user_approved as _wa
+            _wa(full_name, username, role)
+        except Exception:
+            pass
+
+
 def notify_today_appointments(appointments: list):
     if _telegram_enabled():
         try:

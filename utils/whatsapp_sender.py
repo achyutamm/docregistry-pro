@@ -165,3 +165,20 @@ def notify_today_appointments(appointments: list):
             send_whatsapp_message(text)
         except Exception:
             pass
+
+
+def notify_user_approved(full_name: str, username: str, role: str):
+    if not _enabled():
+        return
+    role_label = role.capitalize()
+    body = (
+        f"✅ *New User Approved*\n\n"
+        f"*Name:* {full_name}\n"
+        f"*Username:* {username}\n"
+        f"*Role:* {role_label}\n\n"
+        f"This user has been granted access to DocRegistry Pro."
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
