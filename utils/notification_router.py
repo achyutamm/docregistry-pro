@@ -110,6 +110,15 @@ def notify_user_approved(full_name: str, username: str, role: str):
             pass
 
 
+def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_record_updated as _wa
+            _wa(entry_id, record, changes, updated_by)
+        except Exception:
+            pass
+
+
 def notify_today_appointments(appointments: list):
     if _telegram_enabled():
         try:

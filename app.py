@@ -21,6 +21,7 @@ from utils.notification_router import (
     notify_new_entry, notify_today_appointments,
     notify_user_approved, notify_user_requested, notify_user_rejected,
     notify_role_changed, notify_config_access_changed, notify_user_deleted,
+    notify_record_updated,
 )
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
@@ -1155,6 +1156,30 @@ elif page == "✏️ Edit Records":
                                     "warning",
                                     f"⚠️ Record saved to sheet but history logging failed: {log_ex}"
                                 )
+                            # WhatsApp notification — build record dict from saved values
+                            try:
+                                _updated_record = {
+                                    "Doc_Type":               e_doc_type,
+                                    "Appointment Date":       str(e_date),
+                                    "Appointment Time":       str(e_time),
+                                    "SRO":                    e_sro,
+                                    "Party_Name 1":           e_party1.strip(),
+                                    "Party_Name 1 Mobile_No": e_party1_mobile.strip(),
+                                    "Party_Name 2":           new_party2,
+                                    "Garvi_Application_ID":   e_garvi.strip(),
+                                    "Inedex_Application_No":  e_index_appli.strip(),
+                                    "Index_No":               e_index_no.strip(),
+                                    "Search_No":              e_search.strip(),
+                                    "Title_Status":           e_status,
+                                }
+                                notify_record_updated(
+                                    entry_id=real_entry_id,
+                                    record=_updated_record,
+                                    changes=changes,
+                                    updated_by=username,
+                                )
+                            except Exception:
+                                pass
                         else:
                             st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
                             st.session_state["_edit_save_result"] = (

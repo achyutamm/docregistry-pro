@@ -264,3 +264,66 @@ def notify_user_approved(full_name: str, username: str, role: str):
         send_whatsapp_message(body)
     except Exception:
         pass
+
+
+# Field display names for the edit notification
+_FIELD_LABELS = {
+    "Doc_Type":               "Document Type",
+    "Appointment Date":       "Appointment Date",
+    "Appointment Time":       "Appointment Time",
+    "SRO":                    "SRO",
+    "Party_Name 1":           "Party Name 1",
+    "Party_Name 1 Mobile_No": "Party 1 Mobile",
+    "Party_Name 2":           "Party Name 2",
+    "Garvi_Application_ID":   "GARVI App ID",
+    "Inedex_Application_No":  "Index App No",
+    "Index_No":               "Index No",
+    "Search_No":              "Search No",
+    "Title_Status":           "Title Status",
+}
+
+
+def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by: str):
+    """
+    Send a WhatsApp notification when a record is edited.
+
+    record   — dict of all field values AFTER the save
+    changes  — list of (field_key, old_value, new_value) tuples
+    """
+    if not _enabled():
+        return
+    if not changes:
+        return
+
+    # Build the changed-fields section
+    change_lines = []
+    for field, old, new in changes:
+        label = _FIELD_LABELS.get(field, field)
+        change_lines.append(f"  • *{label}:* {old or '—'} → {new or '—'}")
+    changes_text = "\n".join(change_lines)
+
+    # Full record snapshot
+    body = (
+        f"✏️ *Record Updated — DocRegistry Pro*\n\n"
+        f"*Updated By:* {updated_by}\n"
+        f"*Entry ID:* {entry_id}\n\n"
+        f"*Changes ({len(changes)} field(s)):*\n"
+        f"{changes_text}\n\n"
+        f"━━━━━━━━━━━━ Record Details ━━━━━━━━━━━━\n"
+        f"*Doc Type:* {record.get('Doc_Type', '')}\n"
+        f"*Date:* {record.get('Appointment Date', '')}  "
+        f"*Time:* {record.get('Appointment Time', '')}\n"
+        f"*SRO:* {record.get('SRO', '')}\n"
+        f"*Party 1:* {record.get('Party_Name 1', '')}\n"
+        f"*Mobile:* {record.get('Party_Name 1 Mobile_No', '')}\n"
+        f"*Party 2:* {record.get('Party_Name 2', '') or '—'}\n"
+        f"*GARVI App ID:* {record.get('Garvi_Application_ID', '')}\n"
+        f"*Index App No:* {record.get('Inedex_Application_No', '')}\n"
+        f"*Index No:* {record.get('Index_No', '')}  "
+        f"*Search No:* {record.get('Search_No', '')}\n"
+        f"*Title Status:* {record.get('Title_Status', '')}"
+    )
+    try:
+        send_whatsapp_message(body)
+    except Exception:
+        pass
