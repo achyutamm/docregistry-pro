@@ -5,6 +5,17 @@ Developer: Achyutam Mehta
 """
 
 import os
+import json
+
+# Write Google credentials file from env var (Streamlit Cloud / GitHub Actions)
+_CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+if _CREDS_JSON:
+    _creds_path = os.path.join("credentials", "docregistry-credentials_bk.json.json")
+    os.makedirs("credentials", exist_ok=True)
+    if not os.path.exists(_creds_path):
+        with open(_creds_path, "w") as _f:
+            _f.write(_CREDS_JSON)
+
 import streamlit as st
 import extra_streamlit_components as stx
 from utils.simple_auth import SimpleAuth
