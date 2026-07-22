@@ -96,7 +96,8 @@ class SheetsManager:
             "Title_Status",
             "Created_By",
             "Entry_Date",
-            "Entry_Time"
+            "Entry_Time",
+            "Remark"
         ]
 
         # Auto-create headers in Sheet1 if it is empty (must be after self.headers is set)
@@ -183,7 +184,8 @@ class SheetsManager:
         title_status,
         created_by,
         entry_date,
-        entry_time
+        entry_time,
+        remark=""
     ):
         entry_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -203,7 +205,8 @@ class SheetsManager:
             title_status,
             created_by,
             entry_date,
-            entry_time
+            entry_time,
+            remark
         ]
 
         next_row = len(self.sheet.col_values(1)) + 1
@@ -217,12 +220,12 @@ class SheetsManager:
     def update_record(self, entry_id, doc_type, appointment_date, appointment_time,
                       sro, party_name_1, party1_mobile, party_name_2,
                       garvi_application_id, index_application_no, index_no,
-                      search_no, title_status):
+                      search_no, title_status, remark=""):
         cell = self.sheet.find(str(entry_id), in_column=1)
         if not cell:
             return False
         row = cell.row
-        # Update columns B–M only; Entry_ID, Created_By, Entry_Date/Time are preserved
+        # Update columns B–M (core fields); N/O/P (Created_By, Entry_Date/Time) are preserved.
         # value_input_option='RAW' prevents Google Sheets from auto-converting
         # "10:15:00" into a time fraction number, which breaks history comparison.
         self.sheet.update(
@@ -233,6 +236,8 @@ class SheetsManager:
               search_no, title_status]],
             value_input_option='RAW'
         )
+        # Q is Remark (col 17); update separately to skip N/O/P
+        self.sheet.update_cell(row, 17, remark)
         return True
 
     # =====================================================

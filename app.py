@@ -733,7 +733,7 @@ elif page == "🔍 Search Records":
             "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
             "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
             "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
-            "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time"
+            "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time"
         ]
         display_cols = [c for c in display_cols if c in filtered.columns]
         result_df = filtered[display_cols].reset_index(drop=True)
@@ -764,6 +764,7 @@ elif page == "🔍 Search Records":
                 "Party_Name 2": "Party Name 2", "Garvi_Application_ID": "GARVI App. No.",
                 "Inedex_Application_No": "Index App. No.", "Index_No": "Index No.",
                 "Search_No": "Search No.", "Title_Status": "Title Status",
+                "Remark": "Remark",
             }
             try:
                 h_df = get_history_cached(sheets_manager, selected_entry_id)
@@ -839,6 +840,7 @@ elif page == "✏️ Edit Records":
         "Index_No":               "Index No.",
         "Search_No":              "Search No.",
         "Title_Status":           "Title Status",
+        "Remark":                 "Remark",
     }
 
     def _norm_time(v):
@@ -1072,6 +1074,14 @@ elif page == "✏️ Edit Records":
                     key="e_status"
                 )
 
+            e_remark = st.text_area(
+                "Remark",
+                value=str(edit_rec.get("Remark", "") or ""),
+                placeholder="Any additional notes or remarks...",
+                key="e_remark",
+                height=80
+            )
+
             st.markdown("---")
             save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
 
@@ -1108,7 +1118,8 @@ elif page == "✏️ Edit Records":
                         index_application_no=e_index_appli.strip(),
                         index_no=e_index_no.strip(),
                         search_no=e_search.strip(),
-                        title_status=e_status
+                        title_status=e_status,
+                        remark=e_remark.strip()
                     )
 
                     if ok:
@@ -1131,6 +1142,7 @@ elif page == "✏️ Edit Records":
                             ("Index_No",               _snap.get("Index_No",               str(edit_rec.get("Index_No", ""))),               e_index_no.strip()),
                             ("Search_No",              _snap.get("Search_No",              str(edit_rec.get("Search_No", ""))),               e_search.strip()),
                             ("Title_Status",           _snap.get("Title_Status",           str(edit_rec.get("Title_Status", ""))),           e_status),
+                            ("Remark",                 _snap.get("Remark",                 str(edit_rec.get("Remark", "") or "")),             e_remark.strip()),
                         ]
                         changes = [(f, old, new) for f, old, new in field_map if old != new]
 
@@ -1149,6 +1161,7 @@ elif page == "✏️ Edit Records":
                             "Index_No":               e_index_no.strip(),
                             "Search_No":              e_search.strip(),
                             "Title_Status":           e_status,
+                            "Remark":                 e_remark.strip(),
                         }
 
                         if changes:
@@ -1182,6 +1195,7 @@ elif page == "✏️ Edit Records":
                                     "Index_No":               e_index_no.strip(),
                                     "Search_No":              e_search.strip(),
                                     "Title_Status":           e_status,
+                                    "Remark":                 e_remark.strip(),
                                 }
                                 notify_record_updated(
                                     entry_id=real_entry_id,

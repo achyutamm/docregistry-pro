@@ -175,6 +175,8 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
         status_options = ["Pending", "In Progress", "Completed", "Rejected"]
         title_status = st.selectbox("Title Status *", status_options, index=0, key="title_status")
 
+    remark = st.text_area("Remark", placeholder="Any additional notes or remarks...", key="remark", height=80)
+
     st.markdown("---")
     b1, b2, b3 = st.columns([2, 1, 1])
     with b1:
@@ -203,6 +205,7 @@ def build_preview_df(entry_id="PREVIEW"):
         "Index No.":         index_no,
         "Search No.":        search_no,
         "Title Status":      title_status,
+        "Remark":            remark,
         "Created By":        username,
     }])
 
@@ -242,7 +245,8 @@ if submit_btn:
                 title_status=title_status,
                 created_by=username,
                 entry_date=str(date.today()),
-                entry_time=datetime.now().strftime("%H:%M:%S")
+                entry_time=datetime.now().strftime("%H:%M:%S"),
+                remark=remark.strip()
             )
 
             if success:
@@ -261,6 +265,7 @@ if submit_btn:
                     "index_no":             index_no.strip(),
                     "search_no":            search_no.strip(),
                     "title_status":         title_status,
+                    "remark":               remark.strip(),
                     "created_by":           username,
                     "entry_date":           str(date.today()),
                     "entry_time":           datetime.now().strftime("%H:%M:%S"),

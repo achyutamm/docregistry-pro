@@ -113,6 +113,7 @@ def notify_new_entry(record: dict):
         f"*Index No:* {record.get('index_no', '')}\n"
         f"*Search No:* {record.get('search_no', '')}\n"
         f"*Title Status:* {record.get('title_status', '')}\n"
+        f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
         f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
     )
@@ -323,6 +324,7 @@ _FIELD_LABELS = {
     "Index_No":               "Index No",
     "Search_No":              "Search No",
     "Title_Status":           "Title Status",
+    "Remark":                 "Remark",
 }
 
 
@@ -364,7 +366,8 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         f"*Index App No:* {record.get('Inedex_Application_No', '')}\n"
         f"*Index No:* {record.get('Index_No', '')}  "
         f"*Search No:* {record.get('Search_No', '')}\n"
-        f"*Title Status:* {record.get('Title_Status', '')}"
+        f"*Title Status:* {record.get('Title_Status', '')}\n"
+        f"*Remark:* {record.get('Remark', '') or '—'}"
     )
     try:
         send_whatsapp_message(body)
