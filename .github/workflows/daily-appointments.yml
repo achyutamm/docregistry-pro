@@ -2,8 +2,8 @@ name: Daily Appointments Notifier
 
 on:
   schedule:
-    - cron: "30 11 * * *"  # Reminder 1 — 17:00 IST (11:30 UTC) day before appointment
-    - cron: "30 3 * * *"   # Reminder 2 —  09:00 IST (03:30 UTC) day of appointment
+    - cron: "30 10 * * *"  # Reminder 1 — 16:00 IST (10:30 UTC) day before appointment
+    - cron: "30 0 * * *"   # Reminder 2 —  06:00 IST (00:30 UTC) day of appointment
   workflow_dispatch:
     inputs:
       reminder:
@@ -38,7 +38,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "num=${{ github.event.inputs.reminder }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.schedule }}" = "30 11 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 10 * * *" ]; then
             echo "num=1" >> $GITHUB_OUTPUT
           else
             echo "num=2" >> $GITHUB_OUTPUT
