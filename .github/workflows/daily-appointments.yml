@@ -2,8 +2,14 @@ name: Daily Appointments Notifier
 
 on:
   schedule:
-    - cron: "30 2 * * *"  # 08:00 IST (02:30 UTC) every day
-  workflow_dispatch:       # allows manual "Run workflow" button for testing
+    - cron: "30 11 * * *"  # Reminder 1 — 17:00 IST (11:30 UTC) day before appointment
+    - cron: "30 3 * * *"   # Reminder 2 —  09:00 IST (03:30 UTC) day of appointment
+  workflow_dispatch:
+    inputs:
+      reminder:
+        description: "Reminder number (1 = day-before 5PM, 2 = day-of 9AM)"
+        required: false
+        default: "2"
 
 jobs:
   notify:
@@ -18,7 +24,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install gspread oauth2client pandas python-dotenv requests pyyaml
+        run: pip install gspread oauth2client pandas python-dotenv requests pyyaml twilio
 
       - name: Write Google service account credentials
         run: |
@@ -27,12 +33,20 @@ jobs:
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
 
-      - name: Install twilio
-        run: pip install twilio
+      - name: Determine reminder number
+        id: reminder
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "num=${{ github.event.inputs.reminder }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" = "30 11 * * *" ]; then
+            echo "num=1" >> $GITHUB_OUTPUT
+          else
+            echo "num=2" >> $GITHUB_OUTPUT
+          fi
 
       - name: Run daily appointments notifier
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BAILEYS_API_KEY: ${{ secrets.BAILEYS_API_KEY }}
-        run: python daily_appointments_notifier.py
+        run: python daily_appointments_notifier.py --reminder=${{ steps.reminder.outputs.num }}

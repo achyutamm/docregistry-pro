@@ -167,6 +167,49 @@ def notify_today_appointments(appointments: list):
             pass
 
 
+def notify_tomorrow_appointments(appointments: list, tomorrow_str: str):
+    if not _enabled():
+        return
+
+    count = len(appointments)
+
+    if count == 0:
+        try:
+            send_whatsapp_message(
+                f"⏰ *Tomorrow's Appointment Reminder — {tomorrow_str}*\n\nNo appointments scheduled for tomorrow."
+            )
+        except Exception:
+            pass
+        return
+
+    try:
+        send_whatsapp_message(
+            f"⏰ *Tomorrow's Appointment Reminder — {tomorrow_str}*\n\nTotal: {count} appointment(s) scheduled for tomorrow."
+        )
+    except Exception:
+        pass
+
+    for appt in appointments:
+        text = (
+            f"*Entry ID:* {appt.get('Entry_ID', '')}\n"
+            f"*Doc Type:* {appt.get('Doc_Type', '')}\n"
+            f"*Date:* {appt.get('Appointment Date', '')}  "
+            f"*Time:* {appt.get('Appointment Time', '')}\n"
+            f"*SRO:* {appt.get('SRO', '')}\n"
+            f"*Party 1:* {appt.get('Party_Name 1', '')}\n"
+            f"*Mobile:* {appt.get('Party_Name 1 Mobile_No', '')}\n"
+            f"*Party 2:* {appt.get('Party_Name 2', '') or '—'}\n"
+            f"*GARVI App ID:* {appt.get('Garvi_Application_ID', '')}\n"
+            f"*Index No:* {appt.get('Index_No', '')}  "
+            f"*Search No:* {appt.get('Search_No', '')}\n"
+            f"*Status:* {appt.get('Title_Status', '')}"
+        )
+        try:
+            send_whatsapp_message(text)
+        except Exception:
+            pass
+
+
 def notify_role_changed(full_name: str, username: str, old_role: str, new_role: str, changed_by: str):
     if not _enabled():
         return
