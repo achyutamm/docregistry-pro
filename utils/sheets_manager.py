@@ -46,7 +46,7 @@ class SheetsManager:
         # Get or auto-create the Edit_History audit sheet
         try:
             self.history_sheet = self.workbook.worksheet("Edit_History")
-        except Exception:
+        except gspread.exceptions.WorksheetNotFound:
             self.history_sheet = self.workbook.add_worksheet(
                 title="Edit_History", rows=5000, cols=7
             )
@@ -58,7 +58,7 @@ class SheetsManager:
         # Get or auto-create User_Requests sheet
         try:
             self.user_requests_sheet = self.workbook.worksheet("User_Requests")
-        except Exception:
+        except gspread.exceptions.WorksheetNotFound:
             self.user_requests_sheet = self.workbook.add_worksheet(
                 title="User_Requests", rows=1000, cols=10
             )
@@ -71,7 +71,7 @@ class SheetsManager:
         # Get or auto-create User_Activity_Log sheet
         try:
             self.activity_log_sheet = self.workbook.worksheet("User_Activity_Log")
-        except Exception:
+        except gspread.exceptions.WorksheetNotFound:
             self.activity_log_sheet = self.workbook.add_worksheet(
                 title="User_Activity_Log", rows=2000, cols=6
             )
