@@ -212,6 +212,14 @@ class SheetsManager:
         next_row = len(self.sheet.col_values(1)) + 1
         self.sheet.insert_row(row, next_row)
 
+        # Re-sort the sheet by Appointment Date (col C = 3) ascending after every insert
+        # so the sheet always shows nearest date at the top.
+        total_rows = len(self.sheet.col_values(1))
+        if total_rows > 2:
+            num_cols = len(self.headers)
+            last_col = chr(ord('A') + num_cols - 1)  # e.g. 'Q' for 17 columns
+            self.sheet.sort((3, 'asc'), range=f'A2:{last_col}{total_rows}')
+
         return True, entry_id
 
     # =====================================================
@@ -443,6 +451,9 @@ class SheetsManager:
         for col in str_cols:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
+        # Always return records sorted by Appointment Date ascending (nearest date first)
+        if "Appointment Date" in df.columns:
+            df = df.sort_values("Appointment Date", ascending=True).reset_index(drop=True)
         return df
 
     def get_appointments_for_date(self, date_str=None):
