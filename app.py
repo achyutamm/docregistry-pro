@@ -115,7 +115,7 @@ STATUS_OPTIONS       = ["Pending", "In Progress", "Completed", "Rejected"]
 # =====================================================
 # AUTH
 # =====================================================
-auth = SimpleAuth("config.yaml", cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager())
+auth = SimpleAuth("config.yaml", cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=2))
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
@@ -1427,7 +1427,12 @@ elif page == "👥 User Management":
         st.subheader("Active Users")
         st.caption("Change role or config access instantly. You cannot delete your own account.")
         _au_sm = get_sheets_manager()
-        active_users = _au_sm.get_all_users()
+        if hasattr(_au_sm, 'get_all_users'):
+            active_users = _au_sm.get_all_users()
+        else:
+            with open("config.yaml", "r") as f:
+                _cfg = yaml.safe_load(f)
+            active_users = _cfg.get("users", {})
 
         if not active_users:
             st.info("No active users found.")
