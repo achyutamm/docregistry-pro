@@ -79,6 +79,15 @@ class SheetsManager:
                 "Timestamp", "Action", "Username", "Full_Name", "Role", "Performed_By"
             ])
 
+        # Users worksheet — survives deployments, single source of truth for accounts
+        try:
+            self.users_sheet = self.workbook.worksheet("Users")
+        except gspread.exceptions.WorksheetNotFound:
+            self.users_sheet = self.workbook.add_worksheet(title="Users", rows=500, cols=6)
+            self.users_sheet.append_row(
+                ["Username", "Password_Hash", "Name", "Role", "Config_Access", "Created_Date"]
+            )
+
         # Single source of truth for headers
         self.headers = [
             "Entry_ID",
@@ -105,6 +114,7 @@ class SheetsManager:
         self._ensure_history_headers()
         self._ensure_user_requests_headers()
         self._ensure_activity_log_headers()
+        self._ensure_users_sheet_headers()
 
     # =====================================================
     # ENSURE HEADERS (AUTO-SETUP ON EMPTY SHEET)
@@ -434,6 +444,88 @@ class SheetsManager:
         if "Timestamp" in df.columns:
             df = df.sort_values("Timestamp", ascending=False)
         return df.reset_index(drop=True)
+
+    # =====================================================
+    # USERS SHEET (accounts survive deployments)
+    # =====================================================
+    _USERS_SHEET_HEADERS = ["Username", "Password_Hash", "Name", "Role", "Config_Access", "Created_Date"]
+
+    def _ensure_users_sheet_headers(self):
+        first_row = self.users_sheet.row_values(1)
+        if not first_row or first_row[0] != "Username":
+            self.users_sheet.insert_row(self._USERS_SHEET_HEADERS, 1)
+
+    def get_all_users(self) -> dict:
+        """Return all users as {username: {password, name, role, config_access}}."""
+        try:
+            records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        except Exception:
+            return {}
+        users = {}
+        for row in records:
+            uname = str(row.get("Username", "")).strip()
+            if uname:
+                users[uname] = {
+                    "password":      str(row.get("Password_Hash", "")),
+                    "name":          str(row.get("Name", uname)),
+                    "role":          str(row.get("Role", "staff")).lower(),
+                    "config_access": str(row.get("Config_Access", "False")).lower() in ("true", "1", "yes"),
+                }
+        return users
+
+    def add_user_to_sheet(self, username: str, password_hash: str, name: str,
+                          role: str, config_access: bool = False):
+        self.users_sheet.append_row([
+            username, password_hash, name, role,
+            str(config_access),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ])
+
+    def update_user_password_sheet(self, username: str, password_hash: str) -> bool:
+        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        for i, row in enumerate(records, start=2):
+            if str(row.get("Username", "")).strip() == username:
+                self.users_sheet.update_cell(i, 2, password_hash)
+                return True
+        return False
+
+    def update_user_role_sheet(self, username: str, role: str) -> bool:
+        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        for i, row in enumerate(records, start=2):
+            if str(row.get("Username", "")).strip() == username:
+                self.users_sheet.update_cell(i, 4, role)
+                return True
+        return False
+
+    def update_user_config_access_sheet(self, username: str, config_access: bool) -> bool:
+        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        for i, row in enumerate(records, start=2):
+            if str(row.get("Username", "")).strip() == username:
+                self.users_sheet.update_cell(i, 5, str(config_access))
+                return True
+        return False
+
+    def delete_user_from_sheet(self, username: str) -> bool:
+        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        for i, row in enumerate(records, start=2):
+            if str(row.get("Username", "")).strip() == username:
+                self.users_sheet.delete_rows(i)
+                return True
+        return False
+
+    def seed_users_from_config(self, config_users: dict):
+        """One-time migration: seed the Users sheet from config.yaml users if the sheet is empty."""
+        if self.get_all_users():
+            return  # already populated — skip
+        for uname, udata in config_users.items():
+            self.users_sheet.append_row([
+                uname,
+                str(udata.get("password", "")),
+                str(udata.get("name", uname)),
+                str(udata.get("role", "staff")),
+                str(udata.get("config_access", False)),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ])
 
     # =====================================================
     # READ RECORDS

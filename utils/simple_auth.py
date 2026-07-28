@@ -1,5 +1,9 @@
 """
 Simple Authentication System with cookie-based session persistence and idle timeout.
+
+User accounts are stored in the Google Sheet "Users" worksheet so they survive
+Streamlit Cloud redeployments. config.yaml is still used for app settings but
+the users: section is only kept as a bootstrap seed for the very first run.
 """
 
 import json
@@ -10,12 +14,19 @@ from utils.password_utils import hash_password, verify_password, is_hashed
 
 
 class SimpleAuth:
-    def __init__(self, config_file='config.yaml', cookie_manager=None):
+    def __init__(self, config_file='config.yaml', cookie_manager=None, sheets_manager=None):
         with open(config_file, 'r') as f:
             self.config = yaml.safe_load(f)
-        self.users          = self.config.get('users', {})
+        self._sm            = sheets_manager
         self.session_config = self.config.get('session', {})
-        self._cm            = cookie_manager   # injected once from app.py
+        self._cm            = cookie_manager
+
+        if self._sm:
+            # On first ever run, migrate existing config.yaml users into the sheet
+            self._sm.seed_users_from_config(self.config.get('users', {}))
+            self.users = self._sm.get_all_users()
+        else:
+            self.users = self.config.get('users', {})
 
     # ── helpers ──────────────────────────────────────────────────
     def _timeout_minutes(self):
@@ -53,21 +64,30 @@ class SimpleAuth:
         st.session_state.login_time    = login_time or datetime.now()
         st.session_state.last_activity = datetime.now()
 
+    def _reload_users(self):
+        """Pull the latest user list from the sheet (or config.yaml fallback)."""
+        if self._sm:
+            self.users = self._sm.get_all_users()
+        else:
+            with open('config.yaml', 'r') as f:
+                cfg = yaml.safe_load(f)
+            self.users = cfg.get('users', {})
+
     # ── public API ────────────────────────────────────────────────
     def authenticate(self, username, password):
+        self._reload_users()  # always fresh for login
         if username in self.users:
             stored = self.users[username]['password']
             if is_hashed(stored):
                 if verify_password(password, stored):
                     return True, self.users[username]
             elif stored == password:
-                # Legacy plaintext password — upgrade to a hash now that it's verified
+                # Legacy plaintext — upgrade to hash
                 self.set_user_password(username, password)
                 return True, self.users[username]
         return False, None
 
     def is_authenticated(self) -> bool:
-        # --- already authenticated in this session ---
         if st.session_state.get('authenticated', False):
             last_act = st.session_state.get('last_activity')
             if last_act:
@@ -85,10 +105,6 @@ class SimpleAuth:
             self._write_cookie(st.session_state.username)
             return True
 
-        # --- cookie check ---
-        # On first render after a page refresh, the CookieManager iframe hasn't
-        # loaded yet, so _cm.get() returns None even if a valid cookie exists.
-        # Force ONE extra rerun to let the iframe load, then read the cookie.
         if not st.session_state.get("_cookie_checked", False):
             st.session_state["_cookie_checked"] = True
             st.rerun()
@@ -107,7 +123,6 @@ class SimpleAuth:
                         self._write_cookie(uname)
                         return True
                     elif elapsed_min > self._timeout_minutes():
-                        # Cookie exists but session timed out
                         self._delete_cookie()
             except Exception:
                 pass
@@ -153,67 +168,86 @@ class SimpleAuth:
         return username in self.users
 
     def add_user_to_config(self, username, password, name, role, config_access=False, config_file="config.yaml"):
-        with open(config_file, "r") as f:
-            cfg = yaml.safe_load(f)
-        if "users" not in cfg:
-            cfg["users"] = {}
-        cfg["users"][username] = {
-            "password": hash_password(password), "name": name, "role": role,
-            "config_access": bool(config_access)
-        }
-        with open(config_file, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        self.users = cfg["users"]
+        hashed = hash_password(password)
+        if self._sm:
+            self._sm.add_user_to_sheet(username, hashed, name, role, config_access)
+            self._reload_users()
+        else:
+            with open(config_file, "r") as f:
+                cfg = yaml.safe_load(f)
+            if "users" not in cfg:
+                cfg["users"] = {}
+            cfg["users"][username] = {
+                "password": hashed, "name": name, "role": role,
+                "config_access": bool(config_access)
+            }
+            with open(config_file, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            self.users = cfg["users"]
         return True
 
     def set_user_config_access(self, username, value: bool, config_file="config.yaml"):
-        """Grant or revoke Configuration tab access for an existing user."""
-        with open(config_file, "r") as f:
-            cfg = yaml.safe_load(f)
-        if username not in cfg.get("users", {}):
-            return False
-        cfg["users"][username]["config_access"] = bool(value)
-        with open(config_file, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        self.users = cfg["users"]
+        if self._sm:
+            self._sm.update_user_config_access_sheet(username, value)
+            self._reload_users()
+        else:
+            with open(config_file, "r") as f:
+                cfg = yaml.safe_load(f)
+            if username not in cfg.get("users", {}):
+                return False
+            cfg["users"][username]["config_access"] = bool(value)
+            with open(config_file, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            self.users = cfg["users"]
         if st.session_state.get("username") == username:
-            st.session_state.user_info = self.users[username]
+            st.session_state.user_info = self.users.get(username, {})
         return True
 
     def set_user_password(self, username, new_password, config_file="config.yaml"):
-        """Hash and persist a new password for an existing user (used for password resets)."""
-        with open(config_file, "r") as f:
-            cfg = yaml.safe_load(f)
-        if username not in cfg.get("users", {}):
-            return False
-        cfg["users"][username]["password"] = hash_password(new_password)
-        with open(config_file, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        self.users = cfg["users"]
+        hashed = hash_password(new_password)
+        if self._sm:
+            self._sm.update_user_password_sheet(username, hashed)
+            self._reload_users()
+        else:
+            with open(config_file, "r") as f:
+                cfg = yaml.safe_load(f)
+            if username not in cfg.get("users", {}):
+                return False
+            cfg["users"][username]["password"] = hashed
+            with open(config_file, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            self.users = cfg["users"]
         if st.session_state.get("username") == username:
-            st.session_state.user_info = self.users[username]
+            st.session_state.user_info = self.users.get(username, {})
         return True
 
     def set_user_role(self, username, new_role: str, config_file="config.yaml"):
-        with open(config_file, "r") as f:
-            cfg = yaml.safe_load(f)
-        if username not in cfg.get("users", {}):
-            return False
-        cfg["users"][username]["role"] = new_role.lower()
-        with open(config_file, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        self.users = cfg["users"]
+        if self._sm:
+            self._sm.update_user_role_sheet(username, new_role.lower())
+            self._reload_users()
+        else:
+            with open(config_file, "r") as f:
+                cfg = yaml.safe_load(f)
+            if username not in cfg.get("users", {}):
+                return False
+            cfg["users"][username]["role"] = new_role.lower()
+            with open(config_file, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            self.users = cfg["users"]
         if st.session_state.get("username") == username:
-            st.session_state.user_info = self.users[username]
+            st.session_state.user_info = self.users.get(username, {})
         return True
 
     def remove_user_from_config(self, username, config_file="config.yaml"):
-        with open(config_file, "r") as f:
-            cfg = yaml.safe_load(f)
-        if username in cfg.get("users", {}):
-            del cfg["users"][username]
-            with open(config_file, "w") as f:
-                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-            self.users = cfg.get("users", {})
-            return True
-        return False
+        if self._sm:
+            self._sm.delete_user_from_sheet(username)
+            self._reload_users()
+        else:
+            with open(config_file, "r") as f:
+                cfg = yaml.safe_load(f)
+            if username in cfg.get("users", {}):
+                del cfg["users"][username]
+                with open(config_file, "w") as f:
+                    yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+                self.users = cfg.get("users", {})
+        return True
