@@ -98,20 +98,16 @@ sro_options:
   - S.R.O.- Jotana
 telegram:
   enabled: false
-whatsapp:
-  enabled: true
-  provider: baileys
-  baileys_api_url: https://docregistry-pro-production.up.railway.app
-  group_id: '120363409369498081@g.us'
-  from_number: '+14155238886'
-  mode: sandbox
-  production_number: '+17017655675'
-  recipient_numbers:
-  - '+919824551099'
 users:
-  Akhilb:
-    name: Akhil Barot
-    password: pbkdf2_sha256$260000$07eceeb2e9dcfa8c1f85692760052395$c52bd0fd9c75d01e7c1e3951a1a47e51617796804f42a5be1ec12217ed0150b2
+  AKHIL G:
+    config_access: false
+    name: AKHIL GOHIL
+    password: pbkdf2_sha256$260000$2dd07dfb41db05706aced8162cc1f3b1$a8ebfa2f7225736eb121aed041a49f2ad9b0257d9e92a0f15c16bf9310930c56
+    role: staff
+  Parag:
+    config_access: true
+    name: Parag Mehta
+    password: pbkdf2_sha256$260000$a54ce9b50f0f8d7ffec02f3092d7a3fa$8f7415b82104d5c7881cad468d3a26911febfc3f59fdc8ae96e65e565827ba3f
     role: staff
   achyutam:
     config_access: false
@@ -123,3 +119,13 @@ users:
     name: Admin User
     password: pbkdf2_sha256$260000$0268dfb3b11a645eafd33b322a8cf409$c1f7c87f81a6cb53ceea6fa511952debd130c3f9346492d97d1a1e07cdeba897
     role: admin
+whatsapp:
+  baileys_api_url: https://docregistry-pro-production.up.railway.app
+  enabled: true
+  from_number: '+14155238886'
+  group_id: 120363409369498081@g.us
+  mode: sandbox
+  production_number: '+17017655675'
+  provider: baileys
+  recipient_numbers:
+  - '+919824551099'
