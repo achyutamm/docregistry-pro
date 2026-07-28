@@ -21,10 +21,14 @@ class SimpleAuth:
         self.session_config = self.config.get('session', {})
         self._cm            = cookie_manager
 
-        if self._sm:
-            # On first ever run, migrate existing config.yaml users into the sheet
-            self._sm.seed_users_from_config(self.config.get('users', {}))
-            self.users = self._sm.get_all_users()
+        if self._sm and hasattr(self._sm, 'seed_users_from_config'):
+            try:
+                # On first ever run, migrate existing config.yaml users into the sheet
+                self._sm.seed_users_from_config(self.config.get('users', {}))
+                self.users = self._sm.get_all_users()
+            except Exception:
+                # Sheet not ready yet — fall back to config.yaml for this run
+                self.users = self.config.get('users', {})
         else:
             self.users = self.config.get('users', {})
 
@@ -66,12 +70,15 @@ class SimpleAuth:
 
     def _reload_users(self):
         """Pull the latest user list from the sheet (or config.yaml fallback)."""
-        if self._sm:
-            self.users = self._sm.get_all_users()
-        else:
-            with open('config.yaml', 'r') as f:
-                cfg = yaml.safe_load(f)
-            self.users = cfg.get('users', {})
+        if self._sm and hasattr(self._sm, 'get_all_users'):
+            try:
+                self.users = self._sm.get_all_users()
+                return
+            except Exception:
+                pass
+        with open('config.yaml', 'r') as f:
+            cfg = yaml.safe_load(f)
+        self.users = cfg.get('users', {})
 
     # ── public API ────────────────────────────────────────────────
     def authenticate(self, username, password):

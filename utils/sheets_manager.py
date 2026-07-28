@@ -457,6 +457,8 @@ class SheetsManager:
 
     def get_all_users(self) -> dict:
         """Return all users as {username: {password, name, role, config_access}}."""
+        if not hasattr(self, 'users_sheet'):
+            return {}
         try:
             records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
         except Exception:
@@ -515,6 +517,8 @@ class SheetsManager:
 
     def seed_users_from_config(self, config_users: dict):
         """One-time migration: seed the Users sheet from config.yaml users if the sheet is empty."""
+        if not hasattr(self, 'users_sheet'):
+            return
         if self.get_all_users():
             return  # already populated — skip
         for uname, udata in config_users.items():
