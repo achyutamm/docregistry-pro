@@ -81,6 +81,18 @@ with top_col1:
 with top_col2:
     st.caption("Your username will be automatically stored in the CREATED_BY column for accountability.")
 
+# Show the previous submission's result (if any) up here — set right before the
+# form-clearing rerun below, so it survives the reset instead of vanishing with
+# the emptied fields.
+if "_new_entry_saved" in st.session_state:
+    _saved = st.session_state.pop("_new_entry_saved")
+    st.success("✅ Entry saved successfully!")
+    st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
+    st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
+    st.markdown("### 📄 Saved Record")
+    st.dataframe(pd.DataFrame(_saved["preview"]), hide_index=True, use_container_width=True)
+    st.divider()
+
 # ============================================
 # FORM VERSION — bumping this clears all form fields reliably
 # ============================================
@@ -88,13 +100,20 @@ if "ne_form_ver" not in st.session_state:
     st.session_state.ne_form_ver = 0
 _fver = st.session_state.ne_form_ver
 
+# Party Name 2 is a bank/branch dropdown for Mortgage & Release entries (the
+# "party 2" there is always one of the configured NCB/bank branches); for every
+# other document type it's a free-text field since party 2 is a person, not a
+# fixed option.
+BANK_PARTY2_DOC_TYPES = {"Mortgage", "Release"}
+
 def _clear_form():
     st.session_state.ne_form_ver += 1
     st.session_state.pop("ne_district", None)
     st.session_state.pop("ne_sro", None)
+    st.session_state.pop("doc_type", None)
 
 # ============================================
-# DISTRICT & SRO — outside form so they react instantly
+# DOCUMENT TYPE, DISTRICT & SRO — outside form so they react instantly
 # ============================================
 
 # Reset SRO whenever district changes
@@ -102,15 +121,18 @@ def _on_district_change():
     st.session_state["ne_sro"] = "-- Select SRO --"
 
 st.markdown("### 📋 Entry Details")
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 with c1:
+    doc_types = config.get("document_types", [])
+    doc_type = st.selectbox("Document Type *", doc_types, key="doc_type")
+with c2:
     district = st.selectbox(
         "District *",
         ["-- Select District --"] + list(sro_options.keys()),
         key="ne_district",
         on_change=_on_district_change
     )
-with c2:
+with c3:
     current_district = st.session_state.get("ne_district", "-- Select District --")
     sro_list = sro_options.get(current_district, []) if current_district != "-- Select District --" else []
     if not sro_list:
@@ -123,24 +145,22 @@ with c2:
             key="ne_sro"
         )
 
+party2_is_bank = doc_type in BANK_PARTY2_DOC_TYPES
+
 # ============================================
 # DATA ENTRY FORM
 # ============================================
 with st.form(f"registry_form_{_fver}", clear_on_submit=False):
-    st.markdown("##### Document Type & Appointment")
+    st.markdown("##### Appointment")
 
-    # Row 1: Document Type & Date
+    # Row 1: Date & Time
     c1, c2 = st.columns(2)
     with c1:
-        doc_types = config.get("document_types", [])
-        doc_type = st.selectbox("Document Type *", doc_types, key="doc_type")
-    with c2:
         entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
+    with c2:
+        entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
 
-    # Row 2: Time only (District/SRO moved outside)
-    entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
-
-    # Row 3: Party Information
+    # Row 2: Party Information
     st.markdown("### 👥 Party Information")
 
     c1, c2 = st.columns(2)
@@ -152,11 +172,17 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
             key="party1_mobile", max_chars=10
         )
 
-    party_name_2 = st.selectbox(
-        "Party Name 2",
-        ["-- Select --"] + party_name_2_options,
-        key="party_name_2"
-    )
+    if party2_is_bank:
+        party_name_2 = st.selectbox(
+            "Party Name 2",
+            ["-- Select --"] + party_name_2_options,
+            key="party_name_2_select"
+        )
+    else:
+        party_name_2 = st.text_input(
+            "Party Name 2", placeholder="Enter party name",
+            key="party_name_2_text"
+        ).strip()
 
     # Row 4: Application numbers
     st.markdown("### 📂 Application Details")
@@ -272,12 +298,14 @@ if submit_btn:
                     "entry_time":           datetime.now().strftime("%H:%M:%S"),
                 })
                 st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
-                st.success("✅ Entry saved successfully!")
-                st.markdown(f"**Entry ID:** `{entry_id}`")
-                st.markdown(f"**Created by:** `{username}` at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                st.markdown("### 📄 Saved Record")
-                st.dataframe(build_preview_df(entry_id), hide_index=True, use_container_width=True)
+                st.session_state["_new_entry_saved"] = {
+                    "entry_id":   entry_id,
+                    "created_by": username,
+                    "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "preview":    build_preview_df(entry_id).to_dict("records"),
+                }
                 _clear_form()
+                st.rerun()
             else:
                 st.error("❌ Failed to save entry. Please try again.")
         except Exception as e:
