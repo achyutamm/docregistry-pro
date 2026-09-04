@@ -2,9 +2,11 @@ import gspread
 import pandas as pd
 import yaml
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, date as _date
 import os
 from dotenv import load_dotenv
+
+from utils.date_utils import parse_appt_date, parse_appt_date_series
 
 load_dotenv()
 
@@ -222,13 +224,23 @@ class SheetsManager:
         next_row = len(self.sheet.col_values(1)) + 1
         self.sheet.insert_row(row, next_row)
 
-        # Re-sort the sheet by Appointment Date (col C = 3) ascending after every insert
-        # so the sheet always shows nearest date at the top.
+        # Re-sort the sheet by Appointment Date ascending after every insert so the
+        # sheet always shows nearest date at the top. Done in Python (rather than via
+        # Worksheet.sort) because the column is plain DD/MM/YYYY text — a native
+        # Sheets text sort would order it alphabetically (by day) instead of
+        # chronologically.
         total_rows = len(self.sheet.col_values(1))
         if total_rows > 2:
             num_cols = len(self.headers)
             last_col = chr(ord('A') + num_cols - 1)  # e.g. 'Q' for 17 columns
-            self.sheet.sort((3, 'asc'), range=f'A2:{last_col}{total_rows}')
+            data_range = f'A2:{last_col}{total_rows}'
+            body_rows = self.sheet.get(data_range)
+            # Pad ragged rows (Sheets trims trailing empty cells) so every cell is
+            # written explicitly — otherwise a row moving into a position previously
+            # occupied by a longer row would leave that row's stale trailing values behind.
+            body_rows = [r + [""] * (num_cols - len(r)) for r in body_rows]
+            body_rows.sort(key=lambda r: (parse_appt_date(r[2]) is None, parse_appt_date(r[2]) or _date.min))
+            self.sheet.update(data_range, body_rows, value_input_option='RAW')
 
         return True, entry_id
 
@@ -549,14 +561,19 @@ class SheetsManager:
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
         # Always return records sorted by Appointment Date ascending (nearest date first)
         if "Appointment Date" in df.columns:
-            df = df.sort_values("Appointment Date", ascending=True).reset_index(drop=True)
+            df = df.assign(_appt_sort=parse_appt_date_series(df["Appointment Date"]))
+            df = df.sort_values("_appt_sort", ascending=True, na_position="last").drop(columns=["_appt_sort"]).reset_index(drop=True)
         return df
 
-    def get_appointments_for_date(self, date_str=None):
-        """Return all records whose Appointment Date matches date_str (YYYY-MM-DD). Defaults to today."""
-        if date_str is None:
-            date_str = datetime.now().strftime("%Y-%m-%d")
+    def get_appointments_for_date(self, target_date=None):
+        """Return all records whose Appointment Date matches target_date (a date object).
+        Defaults to today. Accepts a legacy 'YYYY-MM-DD' string for backward compatibility."""
+        if target_date is None:
+            target_date = _date.today()
+        elif isinstance(target_date, str):
+            target_date = parse_appt_date(target_date) or _date.today()
         df = self.get_all_records()
         if "Appointment Date" not in df.columns:
             return df
-        return df[df["Appointment Date"].astype(str).str.strip() == date_str].reset_index(drop=True)
+        parsed = parse_appt_date_series(df["Appointment Date"])
+        return df[parsed.dt.date == target_date].reset_index(drop=True)

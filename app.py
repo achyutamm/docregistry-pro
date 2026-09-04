@@ -43,6 +43,7 @@ from utils.config_manager import (
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
+from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series
 
 # =====================================================
 # PAGE CONFIG — must be the very first st call
@@ -308,19 +309,25 @@ if page == "🏠 Dashboard":
         st.info("No records available yet.")
         st.stop()
 
+    # Parsed Appointment Date for all date comparisons/sorting below — the column is
+    # stored as DD/MM/YYYY text so a raw string comparison would be chronologically wrong.
+    _appt_parsed = parse_appt_date_series(df["Appointment Date"])
+
+    _today_ts = pd.Timestamp(date.today())
+
     # Today's Appointments
     st.divider()
     col1, col2 = st.columns([3, 1])
     with col1:
         st.subheader("📅 Today's Appointments")
     with col2:
-        today_csv = df[df["Appointment Date"] == date.today().strftime("%Y-%m-%d")]
+        today_csv = df[_appt_parsed == _today_ts]
         st.download_button("⬇️", today_csv.to_csv(index=False),
                            file_name="todays_appointments.csv",
                            help="Download Today's Appointments",
                            use_container_width=True)
 
-    today_df = df[df["Appointment Date"] == date.today().strftime("%Y-%m-%d")]
+    today_df = df[_appt_parsed == _today_ts]
     if not today_df.empty:
         st.dataframe(display_df(today_df.sort_values("Appointment Time")), use_container_width=True)
     else:
@@ -333,8 +340,8 @@ if page == "🏠 Dashboard":
         st.subheader("📆 Upcoming Appointments (Next 7 Days)")
     with col2:
         upcoming_df = df[
-            (df["Appointment Date"] > date.today().strftime("%Y-%m-%d")) &
-            (df["Appointment Date"] <= (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"))
+            (_appt_parsed > _today_ts) &
+            (_appt_parsed <= (_today_ts + timedelta(days=7)))
         ]
         st.download_button("⬇️", upcoming_df.to_csv(index=False),
                            file_name="upcoming_appointments_7_days.csv",
@@ -342,7 +349,10 @@ if page == "🏠 Dashboard":
                            use_container_width=True)
 
     if not upcoming_df.empty:
-        st.dataframe(display_df(upcoming_df.sort_values(["Appointment Date", "Appointment Time"])), use_container_width=True)
+        st.dataframe(
+            display_df(upcoming_df.assign(_s=_appt_parsed[upcoming_df.index]).sort_values(["_s", "Appointment Time"]).drop(columns=["_s"])),
+            use_container_width=True
+        )
     else:
         st.info("No upcoming appointments in the next 7 days.")
 
@@ -382,10 +392,10 @@ if page == "🏠 Dashboard":
     else:
         # All appointments in the current month, sorted by appointment date
         _cur_month   = date.today().strftime("%Y-%m")
-        _appt_series = pd.to_datetime(filtered_df["Appointment Date"], errors="coerce")
+        _appt_series = parse_appt_date_series(filtered_df["Appointment Date"])
         _in_month    = _appt_series.dt.strftime("%Y-%m") == _cur_month
         upcoming     = filtered_df[_in_month].copy()
-        upcoming["_appt_sort"] = pd.to_datetime(upcoming["Appointment Date"], errors="coerce")
+        upcoming["_appt_sort"] = _appt_series[_in_month]
         table_df     = upcoming.sort_values("_appt_sort").drop(columns=["_appt_sort"])
         _month_name  = date.today().strftime("%B %Y")
         table_label  = f"📅 Appointments — {_month_name}"
@@ -478,7 +488,7 @@ if page == "🏠 Dashboard":
     date_col = "Appointment Date" if date_type == "Appointment Date" else "Entry_Date"
 
     # Build list of available months from selected date column
-    df["_appt_dt"] = pd.to_datetime(df[date_col], errors="coerce")
+    df["_appt_dt"] = parse_appt_date_series(df[date_col])
     available_months = (
         df["_appt_dt"].dropna()
         .dt.to_period("M")
@@ -667,11 +677,11 @@ elif page == "🔍 Search Records":
 
         col6, col7, col8 = st.columns(3)
         with col6:
-            date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}")
+            date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}", format="DD/MM/YYYY")
         with col7:
-            date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}")
+            date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}", format="DD/MM/YYYY")
         with col8:
-            exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}")
+            exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}", format="DD/MM/YYYY")
 
     # Apply Filters
     filtered = df.copy()
@@ -696,12 +706,16 @@ elif page == "🔍 Search Records":
         filtered = filtered[filtered["SRO"].isin(sro_filter)]
     if party2_filter:
         filtered = filtered[filtered["Party_Name 2"].isin(party2_filter)]
-    if date_from:
-        filtered = filtered[filtered["Appointment Date"] >= str(date_from)]
-    if date_to:
-        filtered = filtered[filtered["Appointment Date"] <= str(date_to)]
-    if exact_date:
-        filtered = filtered[filtered["Appointment Date"] == str(exact_date)]
+    if date_from or date_to or exact_date:
+        _filt_appt_parsed = parse_appt_date_series(filtered["Appointment Date"])
+        if date_from:
+            filtered = filtered[_filt_appt_parsed >= pd.Timestamp(date_from)]
+            _filt_appt_parsed = _filt_appt_parsed[filtered.index]
+        if date_to:
+            filtered = filtered[_filt_appt_parsed <= pd.Timestamp(date_to)]
+            _filt_appt_parsed = _filt_appt_parsed[filtered.index]
+        if exact_date:
+            filtered = filtered[_filt_appt_parsed == pd.Timestamp(exact_date)]
 
     # Summary Metrics
     st.divider()
@@ -994,14 +1008,12 @@ elif page == "✏️ Edit Records":
                     key="e_doc_type"
                 )
             with c2:
-                try:
-                    e_date = st.date_input(
-                        "Date *",
-                        value=date.fromisoformat(str(edit_rec.get("Appointment Date", date.today()))),
-                        key="e_date"
-                    )
-                except Exception:
-                    e_date = st.date_input("Date *", value=date.today(), key="e_date")
+                e_date = st.date_input(
+                    "Date *",
+                    value=parse_appt_date(edit_rec.get("Appointment Date")) or date.today(),
+                    key="e_date",
+                    format="DD/MM/YYYY"
+                )
 
             try:
                 t_parts = str(edit_rec.get("Appointment Time", "10:00")).split(":")
@@ -1108,7 +1120,7 @@ elif page == "✏️ Edit Records":
                     ok = sheets_manager.update_record(
                         entry_id=real_entry_id,
                         doc_type=e_doc_type,
-                        appointment_date=str(e_date),
+                        appointment_date=format_appt_date(e_date),
                         appointment_time=str(e_time),
                         sro=e_sro,
                         party_name_1=e_party1.strip(),
@@ -1131,7 +1143,7 @@ elif page == "✏️ Edit Records":
                         _snap = st.session_state.get(_snap_key, {})
                         field_map = [
                             ("Doc_Type",               _snap.get("Doc_Type",               str(edit_rec.get("Doc_Type", ""))),               e_doc_type),
-                            ("Appointment Date",        _snap.get("Appointment Date",        str(edit_rec.get("Appointment Date", ""))),        str(e_date)),
+                            ("Appointment Date",        _snap.get("Appointment Date",        str(edit_rec.get("Appointment Date", ""))),        format_appt_date(e_date)),
                             ("Appointment Time",        _snap.get("Appointment Time",        _norm_time(edit_rec.get("Appointment Time", ""))), _norm_time(e_time)),
                             ("SRO",                    _snap.get("SRO",                    str(edit_rec.get("SRO", ""))),                    e_sro),
                             ("Party_Name 1",           _snap.get("Party_Name 1",           str(edit_rec.get("Party_Name 1", ""))),           e_party1.strip()),
@@ -1150,7 +1162,7 @@ elif page == "✏️ Edit Records":
                         # edit on this same record compares against the correct baseline.
                         st.session_state[_snap_key] = {
                             "Doc_Type":               e_doc_type,
-                            "Appointment Date":        str(e_date),
+                            "Appointment Date":        format_appt_date(e_date),
                             "Appointment Time":        _norm_time(e_time),
                             "SRO":                    e_sro,
                             "Party_Name 1":           e_party1.strip(),
@@ -1184,7 +1196,7 @@ elif page == "✏️ Edit Records":
                             try:
                                 _updated_record = {
                                     "Doc_Type":               e_doc_type,
-                                    "Appointment Date":       str(e_date),
+                                    "Appointment Date":       format_appt_date(e_date),
                                     "Appointment Time":       str(e_time),
                                     "SRO":                    e_sro,
                                     "Party_Name 1":           e_party1.strip(),

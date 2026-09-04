@@ -6,6 +6,7 @@ DocRegistry Pro - Phase 2
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
 from utils.notification_router import notify_new_entry
+from utils.date_utils import format_appt_date
 from datetime import datetime, date, time
 import pandas as pd
 import yaml
@@ -134,7 +135,7 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
         doc_types = config.get("document_types", [])
         doc_type = st.selectbox("Document Type *", doc_types, key="doc_type")
     with c2:
-        entry_date = st.date_input("Date *", value=date.today(), key="entry_date")
+        entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
 
     # Row 2: Time only (District/SRO moved outside)
     entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
@@ -194,7 +195,7 @@ def build_preview_df(entry_id="PREVIEW"):
     return pd.DataFrame([{
         "Entry ID":          entry_id,
         "Document Type":     doc_type,
-        "Appointment Date":  str(entry_date),
+        "Appointment Date":  format_appt_date(entry_date),
         "Appointment Time":  str(entry_time),
         "SRO":               sro,
         "Party Name 1":      party_name_1,
@@ -232,7 +233,7 @@ if submit_btn:
 
             success, entry_id = sheets_manager.add_record(
                 doc_type=doc_type,
-                appointment_date=str(entry_date),
+                appointment_date=format_appt_date(entry_date),
                 appointment_time=str(entry_time),
                 sro=sro,
                 party_name_1=party_name_1.strip(),
@@ -254,7 +255,7 @@ if submit_btn:
                 notify_new_entry({
                     "entry_id":             entry_id,
                     "doc_type":             doc_type,
-                    "appointment_date":     str(entry_date),
+                    "appointment_date":     format_appt_date(entry_date),
                     "appointment_time":     str(entry_time),
                     "sro":                  sro,
                     "party_name_1":         party_name_1.strip(),

@@ -25,8 +25,9 @@ def run(reminder: int):
 
     if reminder == 1:
         # Day-before reminder: fetch tomorrow's appointments
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        df = sm.get_appointments_for_date(tomorrow)
+        tomorrow_date = (datetime.now() + timedelta(days=1)).date()
+        tomorrow = tomorrow_date.strftime("%d/%m/%Y")
+        df = sm.get_appointments_for_date(tomorrow_date)
         print(f"Reminder 1 (day-before): found {len(df)} appointment(s) for {tomorrow}.")
         notify_tomorrow_appointments(df.to_dict("records"), tomorrow)
     else:

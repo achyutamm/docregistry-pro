@@ -4,6 +4,7 @@
 
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_history_cached
+from utils.date_utils import parse_appt_date_series
 import pandas as pd
 import yaml
 
@@ -171,11 +172,11 @@ with st.expander("🔎 Search & Filters", expanded=True):
 
     col6, col7, col8 = st.columns(3)
     with col6:
-        date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}")
+        date_from = st.date_input("Appointment Date From", value=None, key=f"date_from_{fk}", format="DD/MM/YYYY")
     with col7:
-        date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}")
+        date_to = st.date_input("Appointment Date To", value=None, key=f"date_to_{fk}", format="DD/MM/YYYY")
     with col8:
-        exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}")
+        exact_date = st.date_input("Appointment Date (Specific Day)", value=None, key=f"exact_date_{fk}", format="DD/MM/YYYY")
 
 # ============================================
 # APPLY FILTERS
@@ -202,12 +203,16 @@ if sro_filter:
     filtered = filtered[filtered["SRO"].isin(sro_filter)]
 if party2_filter:
     filtered = filtered[filtered["Party_Name 2"].isin(party2_filter)]
-if date_from:
-    filtered = filtered[filtered["Appointment Date"] >= str(date_from)]
-if date_to:
-    filtered = filtered[filtered["Appointment Date"] <= str(date_to)]
-if exact_date:
-    filtered = filtered[filtered["Appointment Date"] == str(exact_date)]
+if date_from or date_to or exact_date:
+    _filt_appt_parsed = parse_appt_date_series(filtered["Appointment Date"])
+    if date_from:
+        filtered = filtered[_filt_appt_parsed >= pd.Timestamp(date_from)]
+        _filt_appt_parsed = _filt_appt_parsed[filtered.index]
+    if date_to:
+        filtered = filtered[_filt_appt_parsed <= pd.Timestamp(date_to)]
+        _filt_appt_parsed = _filt_appt_parsed[filtered.index]
+    if exact_date:
+        filtered = filtered[_filt_appt_parsed == pd.Timestamp(exact_date)]
 
 # ============================================
 # SUMMARY METRICS
