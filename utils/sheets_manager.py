@@ -224,8 +224,8 @@ class SheetsManager:
         next_row = len(self.sheet.col_values(1)) + 1
         self.sheet.insert_row(row, next_row)
 
-        # Re-sort the sheet by Appointment Date descending after every insert so the
-        # sheet always shows the latest date at the top. Done in Python (rather than
+        # Re-sort the sheet by Appointment Date ascending after every insert so the
+        # sheet always shows the nearest date at the top. Done in Python (rather than
         # via Worksheet.sort) because the column is plain DD/MM/YYYY text — a native
         # Sheets text sort would order it alphabetically (by day) instead of
         # chronologically.
@@ -241,7 +241,7 @@ class SheetsManager:
             body_rows = [r + [""] * (num_cols - len(r)) for r in body_rows]
             body_rows.sort(key=lambda r: (
                 parse_appt_date(r[2]) is None,
-                -(parse_appt_date(r[2]) or _date.min).toordinal(),
+                (parse_appt_date(r[2]) or _date.min).toordinal(),
             ))
             self.sheet.update(data_range, body_rows, value_input_option='RAW')
 
@@ -562,10 +562,10 @@ class SheetsManager:
         for col in str_cols:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
-        # Always return records sorted by Appointment Date descending (latest date first)
+        # Always return records sorted by Appointment Date ascending (nearest date first)
         if "Appointment Date" in df.columns:
             df = df.assign(_appt_sort=parse_appt_date_series(df["Appointment Date"]))
-            df = df.sort_values("_appt_sort", ascending=False, na_position="last").drop(columns=["_appt_sort"]).reset_index(drop=True)
+            df = df.sort_values("_appt_sort", ascending=True, na_position="last").drop(columns=["_appt_sort"]).reset_index(drop=True)
         return df
 
     def get_appointments_for_date(self, target_date=None):
