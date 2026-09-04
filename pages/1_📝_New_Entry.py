@@ -88,13 +88,20 @@ if "ne_form_ver" not in st.session_state:
     st.session_state.ne_form_ver = 0
 _fver = st.session_state.ne_form_ver
 
+# Party Name 2 is a bank/branch dropdown for Mortgage & Release entries (the
+# "party 2" there is always one of the configured NCB/bank branches); for every
+# other document type it's a free-text field since party 2 is a person, not a
+# fixed option.
+BANK_PARTY2_DOC_TYPES = {"Mortgage", "Release"}
+
 def _clear_form():
     st.session_state.ne_form_ver += 1
     st.session_state.pop("ne_district", None)
     st.session_state.pop("ne_sro", None)
+    st.session_state.pop("doc_type", None)
 
 # ============================================
-# DISTRICT & SRO — outside form so they react instantly
+# DOCUMENT TYPE, DISTRICT & SRO — outside form so they react instantly
 # ============================================
 
 # Reset SRO whenever district changes
@@ -102,15 +109,18 @@ def _on_district_change():
     st.session_state["ne_sro"] = "-- Select SRO --"
 
 st.markdown("### 📋 Entry Details")
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 with c1:
+    doc_types = config.get("document_types", [])
+    doc_type = st.selectbox("Document Type *", doc_types, key="doc_type")
+with c2:
     district = st.selectbox(
         "District *",
         ["-- Select District --"] + list(sro_options.keys()),
         key="ne_district",
         on_change=_on_district_change
     )
-with c2:
+with c3:
     current_district = st.session_state.get("ne_district", "-- Select District --")
     sro_list = sro_options.get(current_district, []) if current_district != "-- Select District --" else []
     if not sro_list:
@@ -123,24 +133,22 @@ with c2:
             key="ne_sro"
         )
 
+party2_is_bank = doc_type in BANK_PARTY2_DOC_TYPES
+
 # ============================================
 # DATA ENTRY FORM
 # ============================================
 with st.form(f"registry_form_{_fver}", clear_on_submit=False):
-    st.markdown("##### Document Type & Appointment")
+    st.markdown("##### Appointment")
 
-    # Row 1: Document Type & Date
+    # Row 1: Date & Time
     c1, c2 = st.columns(2)
     with c1:
-        doc_types = config.get("document_types", [])
-        doc_type = st.selectbox("Document Type *", doc_types, key="doc_type")
-    with c2:
         entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
+    with c2:
+        entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
 
-    # Row 2: Time only (District/SRO moved outside)
-    entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
-
-    # Row 3: Party Information
+    # Row 2: Party Information
     st.markdown("### 👥 Party Information")
 
     c1, c2 = st.columns(2)
@@ -152,11 +160,17 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
             key="party1_mobile", max_chars=10
         )
 
-    party_name_2 = st.selectbox(
-        "Party Name 2",
-        ["-- Select --"] + party_name_2_options,
-        key="party_name_2"
-    )
+    if party2_is_bank:
+        party_name_2 = st.selectbox(
+            "Party Name 2",
+            ["-- Select --"] + party_name_2_options,
+            key="party_name_2_select"
+        )
+    else:
+        party_name_2 = st.text_input(
+            "Party Name 2", placeholder="Enter party name",
+            key="party_name_2_text"
+        ).strip()
 
     # Row 4: Application numbers
     st.markdown("### 📂 Application Details")
