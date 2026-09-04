@@ -81,6 +81,18 @@ with top_col1:
 with top_col2:
     st.caption("Your username will be automatically stored in the CREATED_BY column for accountability.")
 
+# Show the previous submission's result (if any) up here — set right before the
+# form-clearing rerun below, so it survives the reset instead of vanishing with
+# the emptied fields.
+if "_new_entry_saved" in st.session_state:
+    _saved = st.session_state.pop("_new_entry_saved")
+    st.success("✅ Entry saved successfully!")
+    st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
+    st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
+    st.markdown("### 📄 Saved Record")
+    st.dataframe(pd.DataFrame(_saved["preview"]), hide_index=True, use_container_width=True)
+    st.divider()
+
 # ============================================
 # FORM VERSION — bumping this clears all form fields reliably
 # ============================================
@@ -286,12 +298,14 @@ if submit_btn:
                     "entry_time":           datetime.now().strftime("%H:%M:%S"),
                 })
                 st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
-                st.success("✅ Entry saved successfully!")
-                st.markdown(f"**Entry ID:** `{entry_id}`")
-                st.markdown(f"**Created by:** `{username}` at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                st.markdown("### 📄 Saved Record")
-                st.dataframe(build_preview_df(entry_id), hide_index=True, use_container_width=True)
+                st.session_state["_new_entry_saved"] = {
+                    "entry_id":   entry_id,
+                    "created_by": username,
+                    "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "preview":    build_preview_df(entry_id).to_dict("records"),
+                }
                 _clear_form()
+                st.rerun()
             else:
                 st.error("❌ Failed to save entry. Please try again.")
         except Exception as e:
