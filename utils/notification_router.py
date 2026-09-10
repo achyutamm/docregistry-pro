@@ -128,6 +128,21 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
             pass
 
 
+def notify_pending_records_alert(over_30_records: list, over_30_count: int, total_pending: int):
+    if _telegram_enabled():
+        try:
+            from utils.telegram_sender import notify_pending_records_alert as _tg
+            _tg(over_30_records, over_30_count, total_pending)
+        except Exception:
+            pass
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_pending_records_alert as _wa
+            _wa(over_30_records, over_30_count, total_pending)
+        except Exception:
+            pass
+
+
 def notify_today_appointments(appointments: list):
     if _telegram_enabled():
         try:

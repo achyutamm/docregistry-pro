@@ -328,6 +328,41 @@ _FIELD_LABELS = {
 }
 
 
+def notify_pending_records_alert(over_30_records: list, over_30_count: int, total_pending: int):
+    """Alert the WhatsApp group about records that have been Pending for over 30
+    days — one summary message plus one detail message per overdue record.
+    Silently does nothing if not configured."""
+    if not _enabled():
+        return
+
+    summary = (
+        "⚠️ *Pending Records Alert — DocRegistry Pro*\n\n"
+        f"{over_30_count} record(s) pending for over 30 days — {total_pending} pending total.\n\n"
+        "Please review these at the earliest 🙏"
+    )
+    try:
+        send_whatsapp_message(summary)
+    except Exception:
+        pass
+
+    for rec in over_30_records:
+        text = (
+            f"*Entry ID:* {rec.get('Entry_ID', '')}\n"
+            f"*Doc Type:* {rec.get('Doc_Type', '')}\n"
+            f"*Party 1:* {rec.get('Party_Name 1', '')}\n"
+            f"*Mobile:* {rec.get('Party_Name 1 Mobile_No', '')}\n"
+            f"*SRO:* {rec.get('SRO', '')}\n"
+            f"*Appointment Date:* {rec.get('Appointment Date', '')}\n"
+            f"*Entry Date:* {rec.get('Entry_Date', '')}\n"
+            f"*Days Pending:* {rec.get('Days Pending', '')}\n"
+            f"*Remark:* {rec.get('Remark', '') or '—'}"
+        )
+        try:
+            send_whatsapp_message(text)
+        except Exception:
+            pass
+
+
 def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by: str):
     """
     Send a WhatsApp notification when a record is edited.

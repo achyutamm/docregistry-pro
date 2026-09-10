@@ -1,0 +1,35 @@
+name: Pending Records Alert
+
+on:
+  schedule:
+    - cron: "30 3 * * 1"  # Every Monday, 09:00 IST (03:30 UTC)
+  workflow_dispatch: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install gspread oauth2client pandas python-dotenv requests pyyaml twilio
+
+      - name: Write Google service account credentials
+        run: |
+          mkdir -p credentials
+          printf '%s' "$GOOGLE_CREDENTIALS_JSON" > credentials/docregistry-credentials_bk.json.json
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+
+      - name: Run pending records notifier
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BAILEYS_API_KEY: ${{ secrets.BAILEYS_API_KEY }}
+        run: python pending_records_notifier.py

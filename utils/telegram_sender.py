@@ -133,3 +133,42 @@ def notify_today_appointments(appointments: list):
             send_telegram_message(text)
         except Exception:
             pass
+
+
+def notify_pending_records_alert(over_30_records: list, over_30_count: int, total_pending: int):
+    """Alert the Telegram group about records that have been Pending for over 30
+    days — one summary message plus one detail message per overdue record.
+    Silently does nothing if not configured."""
+    if not _enabled():
+        return
+
+    bot_token, chat_id = _telegram_config()
+    if not bot_token or not chat_id:
+        return
+
+    summary = (
+        "⚠️ <b>Pending Records Alert — DocRegistry Pro</b>\n\n"
+        f"{over_30_count} record(s) pending for over 30 days — {total_pending} pending total.\n\n"
+        "Please review these at the earliest 🙏"
+    )
+    try:
+        send_telegram_message(summary)
+    except Exception:
+        pass
+
+    for rec in over_30_records:
+        text = (
+            f"<b>Entry ID:</b> {rec.get('Entry_ID', '')}\n"
+            f"<b>Doc Type:</b> {rec.get('Doc_Type', '')}\n"
+            f"<b>Party 1:</b> {rec.get('Party_Name 1', '')}\n"
+            f"<b>Mobile:</b> {rec.get('Party_Name 1 Mobile_No', '')}\n"
+            f"<b>SRO:</b> {rec.get('SRO', '')}\n"
+            f"<b>Appointment Date:</b> {rec.get('Appointment Date', '')}\n"
+            f"<b>Entry Date:</b> {rec.get('Entry_Date', '')}\n"
+            f"<b>Days Pending:</b> {rec.get('Days Pending', '')}\n"
+            f"<b>Remark:</b> {rec.get('Remark', '') or '—'}"
+        )
+        try:
+            send_telegram_message(text)
+        except Exception:
+            pass
