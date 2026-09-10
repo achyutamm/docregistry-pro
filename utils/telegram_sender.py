@@ -149,7 +149,8 @@ def notify_pending_records_alert(over_30_records: list, over_30_count: int, tota
     summary = (
         "⚠️ <b>Pending Records Alert — DocRegistry Pro</b>\n\n"
         f"{over_30_count} record(s) pending for over 30 days — {total_pending} pending total.\n\n"
-        "Please review these at the earliest 🙏"
+        f"For all {total_pending} pending records, please open DocRegistry Pro → Dashboard.\n\n"
+        "Please review the overdue ones below at the earliest 🙏"
     )
     try:
         send_telegram_message(summary)
@@ -162,6 +163,7 @@ def notify_pending_records_alert(over_30_records: list, over_30_count: int, tota
             f"<b>Doc Type:</b> {rec.get('Doc_Type', '')}\n"
             f"<b>Party 1:</b> {rec.get('Party_Name 1', '')}\n"
             f"<b>Mobile:</b> {rec.get('Party_Name 1 Mobile_No', '')}\n"
+            f"<b>Party 2:</b> {rec.get('Party_Name 2', '') or '—'}\n"
             f"<b>SRO:</b> {rec.get('SRO', '')}\n"
             f"<b>Appointment Date:</b> {rec.get('Appointment Date', '')}\n"
             f"<b>Entry Date:</b> {rec.get('Entry_Date', '')}\n"
