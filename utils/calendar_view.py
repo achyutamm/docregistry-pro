@@ -18,6 +18,7 @@ FC_VIEW = {"Month": "dayGridMonth", "Week": "timeGridWeek", "Day": "timeGridDay"
 
 IST = timezone(timedelta(hours=5, minutes=30))
 APPT_MINUTES = 30   # block length drawn for each appointment in Week / Day
+CAL_HEIGHT   = 760  # px — fixed calendar height (see the iframe min-height note in render_calendar)
 _NO_TIME = 24 * 60  # sort key for rows without a usable time — shown in the "No time" row
 
 # Teams-like pastel chip per Title_Status: (background, accent border, text)
@@ -279,7 +280,7 @@ def render_calendar(df: pd.DataFrame, username: str = "", display_fn=None):
         "now":           now.isoformat(timespec="seconds"),
         "firstDay":      1,
         "fixedWeekCount": False,         # only the weeks this month needs
-        "height":        "auto",
+        "height":        CAL_HEIGHT,     # fixed, Teams-style — Week/Day hours scroll inside
         "nowIndicator":  True,
         "eventDisplay":  "block",
         "dayMaxEvents":  3,
@@ -296,6 +297,13 @@ def render_calendar(df: pd.DataFrame, username: str = "", display_fn=None):
             "timeGridDay":  {"dayHeaderFormat": {"weekday": "long", "day": "2-digit", "month": "long"}},
         },
     }
+    # streamlit-calendar measures its iframe height only once, on mount; when that happens
+    # mid-rerun (sidebar navigation, view switch) it can measure ~0 and the calendar stays
+    # blank. Pin the iframe to the calendar's fixed height so it can never collapse.
+    st.markdown(
+        f"<style>iframe[title*='streamlit_calendar']{{min-height:{CAL_HEIGHT + 10}px}}</style>",
+        unsafe_allow_html=True,
+    )
     # Keyed on what is shown so every navigation mounts a fresh calendar at the right date
     # and a previous click result does not replay.
     state = fullcalendar(
