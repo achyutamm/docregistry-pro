@@ -44,6 +44,7 @@ from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series
+from utils.calendar_view import render_calendar
 
 # =====================================================
 # PAGE CONFIG — must be the very first st call
@@ -279,7 +280,7 @@ st.sidebar.title("🏠 DocRegistry Pro")
 st.sidebar.markdown(f"👋 **{user_info['name']}**")
 st.sidebar.markdown(f"Role: **{user_info['role'].title()}**")
 
-_nav = ["🏠 Dashboard", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
+_nav = ["🏠 Dashboard", "📅 Calendar", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
 if user_info.get("role") == "admin":
     _nav.append("👥 User Management")
 if user_info.get("config_access", False):
@@ -620,6 +621,15 @@ if page == "🏠 Dashboard":
                         display_df(sp_df[show_cols].sort_values("Entry_Date", ascending=False).reset_index(drop=True)),
                         use_container_width=True
                     )
+
+# =====================================================
+# CALENDAR
+# =====================================================
+elif page == "📅 Calendar":
+    st.title("📅 Calendar")
+    st.caption("Appointments by date from the registry records. Switch between Month, Week and Day, "
+               "and click any day to see its full appointments.")
+    render_calendar(get_all_records_cached(sheets_manager), username=username, display_fn=display_df)
 
 # =====================================================
 # NEW ENTRY
