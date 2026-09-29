@@ -297,11 +297,15 @@ def render_calendar(df: pd.DataFrame, username: str = "", display_fn=None):
             "timeGridDay":  {"dayHeaderFormat": {"weekday": "long", "day": "2-digit", "month": "long"}},
         },
     }
-    # streamlit-calendar measures its iframe height only once, on mount; when that happens
-    # mid-rerun (sidebar navigation, view switch) it can measure ~0 and the calendar stays
-    # blank. Pin the iframe to the calendar's fixed height so it can never collapse.
+    # streamlit-calendar measures its iframe height only once, on mount, so it starts at
+    # height="0". The login CookieManager injects `.element-container:has(iframe[height="0"])
+    # { display: none }` on every authenticated run, which hides the calendar before it can
+    # size itself — it then stays blank forever. Exempt it from that rule and pin its height.
     st.markdown(
-        f"<style>iframe[title*='streamlit_calendar']{{min-height:{CAL_HEIGHT + 10}px}}</style>",
+        "<style>"
+        ".element-container:has(iframe[title*='streamlit_calendar']) { display: block !important; }"
+        f"iframe[title*='streamlit_calendar'] {{ min-height: {CAL_HEIGHT + 10}px; }}"
+        "</style>",
         unsafe_allow_html=True,
     )
     # Keyed on what is shown so every navigation mounts a fresh calendar at the right date
