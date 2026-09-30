@@ -5,6 +5,7 @@ Appointment Date and Appointment Time.
 """
 
 import calendar as pycal
+import html
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
@@ -182,34 +183,42 @@ def _open_day(d: date):
 # =====================================================
 # DETAIL PANELS
 # =====================================================
-def _render_details(row):
+def _render_details(row, display_fn=None):
+    """Every column of the record, in sheet order, labelled with the app's display names."""
     status = _cell(row, "Title_Status")
     _, border, _ = STATUS_STYLE.get(status.lower(), DEFAULT_STYLE)
-    fields = [
-        ("Date",            row["_appt_date"].strftime("%a, %d %b %Y")),
-        ("Time",            _fmt_minutes(row["_mins"])),
-        ("Document Type",   _cell(row, "Doc_Type")),
-        ("SRO",             _cell(row, "SRO")),
-        ("Party 1 Mobile",  _cell(row, "Party_Name 1 Mobile_No")),
-        ("Party Name 2",    _cell(row, "Party_Name 2")),
-        ("GARVI App. No.",  _cell(row, "Garvi_Application_ID")),
-        ("Entry ID",        _cell(row, "Entry_ID")),
-        ("Created By",      _cell(row, "Created_By")),
-    ]
+    cols   = [c for c in row.index if not str(c).startswith("_")]
+    labels = (dict(zip(cols, display_fn(pd.DataFrame(columns=cols)).columns))
+              if display_fn else {c: c for c in cols})
+    fields, wide = [], []   # wide = free-text fields (Remark) shown full-width at the bottom
+    for c in cols:
+        if c == "Appointment Date":
+            value = row["_appt_date"].strftime("%a, %d %b %Y")
+        elif c == "Appointment Time":
+            value = _fmt_minutes(row["_mins"])
+        else:
+            value = _cell(row, c)
+        value = html.escape(value).replace("\n", "<br>")
+        (wide if c == "Remark" else fields).append((labels.get(c, c), value))
     with st.container(border=True):
         head, close = st.columns([6, 1], vertical_alignment="center")
         head.markdown(
-            f"#### {_cell(row, 'Party_Name 1') or '—'} "
+            f"#### {html.escape(_cell(row, 'Party_Name 1')) or '—'} "
             f"<span style='font-size:13px;background:{border};color:#fff;border-radius:10px;"
             f"padding:2px 10px;vertical-align:middle'>{status or 'No status'}</span>",
             unsafe_allow_html=True,
         )
         close.button("✕ Close", key="cal_detail_close", use_container_width=True,
                      on_click=lambda: st.session_state.pop("cal_selected", None))
-        cols = st.columns(3)
-        for i, (label, value) in enumerate(fields):
-            cols[i % 3].markdown(f"<span style='color:#888;font-size:12px'>{label}</span><br>"
-                                 f"<b>{value or '—'}</b>", unsafe_allow_html=True)
+        def _field(slot, label, value):
+            slot.markdown(f"<span style='color:#888;font-size:12px'>{label}</span><br>"
+                          f"<b>{value or '—'}</b>", unsafe_allow_html=True)
+
+        for start in range(0, len(fields), 3):   # a fresh row per 3 so rows stay aligned
+            for slot, (label, value) in zip(st.columns(3), fields[start:start + 3]):
+                _field(slot, label, value)
+        for label, value in wide:
+            _field(st, label, value)
 
 
 def _render_day_table(day_df: pd.DataFrame, anchor: date, display_fn):
@@ -329,7 +338,7 @@ def render_calendar(df: pd.DataFrame, username: str = "", display_fn=None):
 
     sel = st.session_state.get("cal_selected")
     if sel is not None and sel.isdigit() and int(sel) in appts.index:
-        _render_details(appts.loc[int(sel)])
+        _render_details(appts.loc[int(sel)], display_fn)
 
     if view == "Day" and not in_range.empty:
         st.markdown("##### 📋 Appointments on this day")
