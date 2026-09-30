@@ -43,7 +43,7 @@ from utils.config_manager import (
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
-from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series
+from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
 
 # =====================================================
@@ -1027,13 +1027,10 @@ elif page == "✏️ Edit Records":
 
             try:
                 t_parts = str(edit_rec.get("Appointment Time", "10:00")).split(":")
-                e_time = st.time_input(
-                    "Time *",
-                    value=time(int(t_parts[0]), int(t_parts[1])),
-                    key="e_time"
-                )
+                _e_time_val = time(int(t_parts[0]), int(t_parts[1]))
             except Exception:
-                e_time = st.time_input("Time *", value=time(10, 0), key="e_time")
+                _e_time_val = time(10, 0)
+            e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
 
             st.markdown("### 👥 Party Information")
             c1, c2 = st.columns(2)

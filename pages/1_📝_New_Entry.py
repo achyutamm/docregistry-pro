@@ -6,7 +6,7 @@ DocRegistry Pro - Phase 2
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
 from utils.notification_router import notify_new_entry
-from utils.date_utils import format_appt_date
+from utils.date_utils import format_appt_date, appt_time_input
 from datetime import datetime, date, time
 import pandas as pd
 import yaml
@@ -158,7 +158,7 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     with c1:
         entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
     with c2:
-        entry_time = st.time_input("Time *", value=time(10, 0), key="entry_time")
+        entry_time = appt_time_input("Time *", value=time(10, 0), key="entry_time")
 
     # Row 2: Party Information
     st.markdown("### 👥 Party Information")
