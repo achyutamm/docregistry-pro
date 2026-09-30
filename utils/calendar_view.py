@@ -71,6 +71,12 @@ def _now() -> datetime:
     return datetime.now(IST).replace(tzinfo=None)
 
 
+def _office_hours(mins: int) -> int:
+    """New Entry's time box is a 24-hour picker, so "3:50 PM" is often saved as 03:50:00.
+    Registry appointments only happen in office hours, so 01:00–07:59 can only mean PM."""
+    return mins + 12 * 60 if 1 * 60 <= mins < 8 * 60 else mins
+
+
 def _time_minutes(v) -> int:
     """Minutes since midnight for "10:30", "10:30:00" or a Sheets day-fraction; _NO_TIME if unparseable."""
     s = str(v).strip()
@@ -79,10 +85,10 @@ def _time_minutes(v) -> int:
     try:
         if ":" in s:
             p = s.split(":")
-            return int(float(p[0])) * 60 + int(float(p[1]))
+            return _office_hours(int(float(p[0])) * 60 + int(float(p[1])))
         frac = float(s)
         if 0.0 <= frac <= 1.0:
-            return round(frac * 1440)
+            return _office_hours(round(frac * 1440))
     except (ValueError, IndexError):
         pass
     return _NO_TIME
