@@ -57,6 +57,7 @@ COL_DISPLAY = {
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
+    "Party_Name 1 Partners":  "Party 1 Partners",
     "Party_Name 2":           "Party Name 2",
     "Garvi_Application_ID":   "GARVI Application No",
     "Inedex_Application_No":  "Index Application No",
@@ -75,6 +76,7 @@ FIELD_LABELS = {
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
+    "Party_Name 1 Partners":  "Party 1 Partners",
     "Party_Name 2":           "Party Name 2",
     "Garvi_Application_ID":   "GARVI App. No.",
     "Inedex_Application_No":  "Index App. No.",
@@ -246,7 +248,7 @@ if filtered.empty:
 else:
     display_cols = [
         "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
-        "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
+        "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
         "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
         "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time"
     ]

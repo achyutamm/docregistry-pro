@@ -4,11 +4,31 @@ import yaml
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date as _date
 import os
+import re
 from dotenv import load_dotenv
 
 from utils.date_utils import parse_appt_date, parse_appt_date_series
 
 load_dotenv()
+
+def clean_lines(text) -> str:
+    """Multi-line text box → one trimmed entry per line, blank lines dropped
+    (e.g. the Party 1 Partners box: one partner name per line)."""
+    return "\n".join(l.strip() for l in str(text or "").splitlines() if l.strip())
+
+
+# A number at the start of a line: "1 ", "2.", "3)", "4-", "5:" — or a line that is only a
+# number (the live auto-numbering leaves "3 " behind if nothing is typed after it).
+# Needs a space, punctuation or end of line after the digits so "3M Industries" is left alone.
+_LEADING_NUMBER = re.compile(r"^\s*\d+(?:\s*[.)\-:]\s*|\s+|$)")
+
+
+def number_lines(text) -> str:
+    """Partner names, one per line → "1 Name\\n2 Name…". Any numbers already typed
+    are replaced, so the list is always numbered 1, 2, 3… in order."""
+    names = [_LEADING_NUMBER.sub("", line).strip() for line in clean_lines(text).splitlines()]
+    return "\n".join(f"{n} {name}" for n, name in enumerate((x for x in names if x), 1))
+
 
 def _load_google_config():
     """Read active credentials path and sheet ID from config.yaml."""
@@ -108,7 +128,8 @@ class SheetsManager:
             "Created_By",
             "Entry_Date",
             "Entry_Time",
-            "Remark"
+            "Remark",
+            "Party_Name 1 Partners",   # other Party 1 names (partners), one per line
         ]
 
         # Auto-create headers in Sheet1 if it is empty (must be after self.headers is set)
@@ -125,6 +146,15 @@ class SheetsManager:
         first_row = self.sheet.row_values(1)
         if not first_row:
             self.sheet.insert_row(self.headers, 1)
+            return
+        # Migrate sheets created before a column was added: append any missing
+        # headers at the end, in order, so existing columns never move.
+        missing = [h for h in self.headers if h not in first_row]
+        needed_cols = len(first_row) + len(missing)
+        if missing and needed_cols > self.sheet.col_count:
+            self.sheet.add_cols(needed_cols - self.sheet.col_count)
+        for offset, header in enumerate(missing, start=1):
+            self.sheet.update_cell(1, len(first_row) + offset, header)
 
     def _ensure_history_headers(self):
         """Insert the header row in Edit_History if it is missing or data is in row 1."""
@@ -197,7 +227,8 @@ class SheetsManager:
         created_by,
         entry_date,
         entry_time,
-        remark=""
+        remark="",
+        party1_partners=""
     ):
         entry_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -218,7 +249,8 @@ class SheetsManager:
             created_by,
             entry_date,
             entry_time,
-            remark
+            remark,
+            party1_partners
         ]
 
         next_row = len(self.sheet.col_values(1)) + 1
@@ -253,7 +285,7 @@ class SheetsManager:
     def update_record(self, entry_id, doc_type, appointment_date, appointment_time,
                       sro, party_name_1, party1_mobile, party_name_2,
                       garvi_application_id, index_application_no, index_no,
-                      search_no, title_status, remark=""):
+                      search_no, title_status, remark="", party1_partners=None):
         cell = self.sheet.find(str(entry_id), in_column=1)
         if not cell:
             return False
@@ -271,6 +303,9 @@ class SheetsManager:
         )
         # Q is Remark (col 17); update separately to skip N/O/P
         self.sheet.update_cell(row, 17, remark)
+        # R is Party_Name 1 Partners (col 18); None = leave as is
+        if party1_partners is not None:
+            self.sheet.update_cell(row, 18, party1_partners)
         return True
 
     # =====================================================

@@ -156,3 +156,13 @@ def notify_today_appointments(appointments: list):
             _wa(appointments)
         except Exception:
             pass
+
+
+def send_party1_checklist(record: dict):
+    """WhatsApp the Document Type checklist to Party 1's own mobile.
+    Returns (status, detail) — status is "sent", "skipped" or "failed"."""
+    try:
+        from utils.whatsapp_sender import send_party1_checklist as _wa
+        return _wa(record)
+    except Exception as ex:
+        return "failed", f"Could not send WhatsApp to Party 1: {ex}"

@@ -5,8 +5,12 @@ DocRegistry Pro - Phase 2
 
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
-from utils.notification_router import notify_new_entry
+from utils.notification_router import notify_new_entry, send_party1_checklist
 from utils.date_utils import format_appt_date, appt_time_input
+from utils.sheets_manager import number_lines
+from utils.ui_helpers import auto_number_textarea
+from utils import whatsapp_queue
+from utils import phone_utils
 from datetime import datetime, date, time
 import pandas as pd
 import yaml
@@ -68,6 +72,9 @@ with st.sidebar:
             del st.session_state[_k]
         st.switch_page("app.py")
 
+# Send any WhatsApp messages queued while the service was down (throttled, never raises)
+whatsapp_queue.auto_flush_if_due()
+
 # ============================================
 # PAGE HEADER
 # ============================================
@@ -89,6 +96,17 @@ if "_new_entry_saved" in st.session_state:
     st.success("✅ Entry saved successfully!")
     st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
     st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
+    _wa_state, _wa_detail = _saved.get("party1_wa", ("skipped", ""))
+    if _wa_state == "sent":
+        st.success(f"📱 {_wa_detail}")
+    elif _wa_state == "queued":
+        st.warning(f"📥 {_wa_detail}")
+    elif _wa_state == "not_on_whatsapp":
+        st.error(f"⚠️ {_wa_detail}")
+    elif _wa_state == "failed":
+        st.warning(f"⚠️ {_wa_detail}")
+    elif _wa_detail:
+        st.info(f"📱 WhatsApp to Party 1 not sent: {_wa_detail}")
     st.markdown("### 📄 Saved Record")
     st.dataframe(pd.DataFrame(_saved["preview"]), hide_index=True, use_container_width=True)
     st.divider()
@@ -167,10 +185,20 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     with c1:
         party_name_1 = st.text_input("Party Name 1 *", placeholder="Enter full party name", key="party_name_1")
     with c2:
-        party1_mobile = st.text_input(
+        _cc_col, _mob_col = st.columns([1, 3])
+        party1_cc = _cc_col.text_input("Code", value=phone_utils.DEFAULT_CODE, key="party1_cc", max_chars=4)
+        party1_number = _mob_col.text_input(
             "Party 1 Mobile No", placeholder="e.g., 9876543210",
             key="party1_mobile", max_chars=10
         )
+    # Stored form: plain 10 digits for +91, "+<code> <number>" otherwise
+    party1_mobile = phone_utils.join(party1_cc, party1_number)
+
+    party1_partners = st.text_area(
+        "Party 1 Partners",
+        placeholder="Click here and type the first partner name - press Enter for the next partner (1, 2, 3... are added automatically)",
+        key="party1_partners", height=100,
+    )
 
     if party2_is_bank:
         party_name_2 = st.selectbox(
@@ -213,6 +241,9 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     with b3:
         clear_btn = st.form_submit_button("🗑️ Clear Form", type="secondary", use_container_width=True)
 
+# Live 1, 2, 3… numbering in the Party 1 Partners box while typing
+auto_number_textarea("Party 1 Partners")
+
 # ============================================
 # FORM ACTIONS
 # ============================================
@@ -226,6 +257,7 @@ def build_preview_df(entry_id="PREVIEW"):
         "SRO":               sro,
         "Party Name 1":      party_name_1,
         "Party 1 Mobile No": party1_mobile,
+        "Party 1 Partners":  number_lines(party1_partners),
         "Party Name 2":      party_name_2 if party_name_2 != "-- Select --" else "",
         "GARVI App. No.":    garvi_appli_no,
         "Index App. No.":    index_appli_no,
@@ -251,8 +283,8 @@ if submit_btn:
         st.error("❌ Please enter Party Name 1.")
     elif district == "-- Select District --" or sro == "-- Select SRO --":
         st.error("❌ Please select a District and SRO.")
-    elif party1_mobile.strip() and not (party1_mobile.strip().isdigit() and len(party1_mobile.strip()) == 10):
-        st.error("❌ Party 1 Mobile No must be exactly 10 digits.")
+    elif phone_utils.validate(party1_cc, party1_number):
+        st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(party1_cc, party1_number)}")
     else:
         try:
             sheets_manager = get_sheets_manager()
@@ -273,12 +305,13 @@ if submit_btn:
                 created_by=username,
                 entry_date=str(date.today()),
                 entry_time=datetime.now().strftime("%H:%M:%S"),
-                remark=remark.strip()
+                remark=remark.strip(),
+                party1_partners=number_lines(party1_partners),
             )
 
             if success:
                 clear_records_cache()
-                notify_new_entry({
+                _record = {
                     "entry_id":             entry_id,
                     "doc_type":             doc_type,
                     "appointment_date":     format_appt_date(entry_date),
@@ -286,6 +319,7 @@ if submit_btn:
                     "sro":                  sro,
                     "party_name_1":         party_name_1.strip(),
                     "party1_mobile":        party1_mobile.strip(),
+                    "party1_partners":      number_lines(party1_partners),
                     "party_name_2":         party_name_2 if party_name_2 != "-- Select --" else "",
                     "garvi_application_id": garvi_appli_no.strip(),
                     "index_application_no": index_appli_no.strip(),
@@ -296,13 +330,25 @@ if submit_btn:
                     "created_by":           username,
                     "entry_date":           str(date.today()),
                     "entry_time":           datetime.now().strftime("%H:%M:%S"),
-                })
+                }
+                with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
+                    _wa_status = send_party1_checklist(_record)
+
+                # WhatsApp worked, so the service is up: send anything left pending
+                if _wa_status[0] == "sent":
+                    try:
+                        whatsapp_queue.flush()
+                    except Exception:
+                        pass
+
+                notify_new_entry(_record)
                 st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
                 st.session_state["_new_entry_saved"] = {
                     "entry_id":   entry_id,
                     "created_by": username,
                     "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     "preview":    build_preview_df(entry_id).to_dict("records"),
+                    "party1_wa":  _wa_status,
                 }
                 _clear_form()
                 st.rerun()

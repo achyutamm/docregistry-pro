@@ -31,6 +31,75 @@ google:
       credentials: credentials/docregistry-credentials.json
       sheet_id: 125SVBTF0LPfi0cYXbNp0Gut_DRI-bOLnqSP4qQdcK_A
   active_account: bk
+party1_checklist:
+  default_items:
+  - Receivable - 1 passport size photo
+  - Receivable - Aadhaar card
+  - Payable - 1 passport size photo
+  - Payable - Aadhaar card
+  enabled: true
+  items:
+    Agreement of Sale (Banakhat):
+    - Receivable (Lenar)- 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar)- 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    - Witness 1 and Witness 2 (Sakshi) - Aadhar Card and PAN Card
+    Gift Deed:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Hak-Kami (Dispose of rights):
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    - Witness 1 and Witness 2 (Sakshi) - Aadhar Card and PAN Card
+    - 2 photos of the property taken with the GPS Map Camera app (location visible)
+    Lease Agreement:
+    - Receivable - 1 passport size photo
+    - Receivable - Aadhaar card
+    - Payable - 1 passport size photo
+    - Payable - Aadhaar card
+    Mortgage:
+    - Party -  Passport size photo
+    - Aadhaar Card and PAN Card
+    - Witness 1 (Sakshi) - Aadhar Card and Passport  Photo
+    - Witness 2 (Sakshi) - Aadhar Card and  Passport  Photo
+    Power of Attorney:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Release:
+    - Party Aadhaar card and PAN Card
+    - Witness 1 (Sakshi) - Aadhar Card
+    - Witness 2 (Sakshi) - Aadhaar card
+    Rent Agreement:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable  (Lenar)- Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Sale Deed:
+    - 2 photos of the property taken with the GPS Map Camera app (location visible)
+    - Receivable - 1 passport size photo
+    - Receivable - Aadhaar card
+    - Payable - 1 passport size photo
+    - Payable - Aadhaar card
+  message: |-
+    Namaste {party_name_1},
+
+    Your *{doc_type}* registration appointment is on *{appointment_date}* at *{appointment_time}* at *{sro}*.
+
+    Please bring the following documents:
+    {checklist}
+    {partners}
+    If you need any more information regarding this, you can reach out to us on {contact_numbers} during our business hours.
+
+    - {company}
+  test_mobile: '8980892103'
+  test_mode: true
 party_name_2_options:
 - NCB NARODA
 - NCB NANA CHILODA
@@ -121,6 +190,9 @@ users:
     role: admin
 whatsapp:
   baileys_api_url: https://docregistry-pro-production.up.railway.app
+  contact_numbers:
+  - '9824551099'
+  - '8980892103'
   enabled: true
   from_number: '+14155238886'
   group_id: 120363409369498081@g.us

@@ -96,7 +96,7 @@ app.get('/qr', async (req, res) => {
         </body></html>`)
     }
     try {
-        const qrDataUrl = await QRCode.toDataURL(lastQR, { width: 300 })
+        const qrDataUrl = await QRCode.toDataURL(lastQR, { width: 420, margin: 4, errorCorrectionLevel: 'L' })
         res.send(`<!DOCTYPE html>
         <html>
         <head>
@@ -106,7 +106,7 @@ app.get('/qr', async (req, res) => {
         <body style="text-align:center;font-family:sans-serif;padding:40px;background:#f9f9f9">
             <h2>📱 Scan with WhatsApp — Act Fast!</h2>
             <p>Open WhatsApp → <b>Linked Devices</b> → <b>Link a Device</b> → Scan below</p>
-            <img src="${qrDataUrl}" style="width:300px;height:300px;border:4px solid #25D366;border-radius:12px">
+            <img src="${qrDataUrl}" style="width:420px;height:420px;border:4px solid #25D366;border-radius:12px">
             <p style="color:#888;font-size:13px">⏱ QR expires in ~20 seconds. Page auto-refreshes every 15s.</p>
         </body>
         </html>`)
@@ -132,6 +132,53 @@ app.post('/send', async (req, res) => {
         res.json({ success: true })
     } catch (err) {
         console.error(`❌ Send failed: ${err.message}`)
+        res.status(500).json({ success: false, error: err.message })
+    }
+})
+
+// Link by phone number instead of QR: returns an 8-character code to type in
+// WhatsApp → Linked Devices → Link a Device → "Link with phone number instead"
+app.get('/pair', async (req, res) => {
+    const digits = String(req.query.phone || '').replace(/\D/g, '')
+    if (isConnected || sock?.authState?.creds?.registered) {
+        return res.status(400).json({ success: false, error: 'Already linked. Nothing to pair.' })
+    }
+    if (digits.length < 11) {
+        return res.status(400).json({ success: false, error: 'Pass ?phone= with country code, e.g. 919876543210' })
+    }
+    try {
+        const code = await sock.requestPairingCode(digits)
+        console.log(`🔗 Pairing code for ${digits}: ${code}`)
+        res.json({ success: true, code })
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message })
+    }
+})
+
+// Send message to an individual WhatsApp number (e.g. Party 1's document checklist)
+app.post('/send-direct', async (req, res) => {
+    const { phone, message } = req.body
+
+    if (!isConnected) {
+        return res.status(503).json({ success: false, error: 'WhatsApp not connected. Check /status or /qr.' })
+    }
+    if (!phone || !message) {
+        return res.status(400).json({ success: false, error: 'phone and message are required' })
+    }
+
+    // Digits only, with country code (e.g. 919876543210)
+    const digits = String(phone).replace(/\D/g, '')
+
+    try {
+        const [result] = await sock.onWhatsApp(digits)
+        if (!result?.exists) {
+            return res.status(404).json({ success: false, error: `${digits} is not on WhatsApp` })
+        }
+        await sock.sendMessage(result.jid, { text: message })
+        console.log(`✅ Message sent to number: ${digits}`)
+        res.json({ success: true })
+    } catch (err) {
+        console.error(`❌ Direct send failed: ${err.message}`)
         res.status(500).json({ success: false, error: err.message })
     }
 })
