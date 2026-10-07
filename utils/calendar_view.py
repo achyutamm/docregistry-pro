@@ -190,7 +190,7 @@ def _render_details(row, display_fn=None):
     cols   = [c for c in row.index if not str(c).startswith("_")]
     labels = (dict(zip(cols, display_fn(pd.DataFrame(columns=cols)).columns))
               if display_fn else {c: c for c in cols})
-    fields, wide = [], []   # wide = free-text fields (Remark) shown full-width at the bottom
+    fields, wide = [], []   # wide = free-text fields (Remark, Partners) shown full-width at the bottom
     for c in cols:
         if c == "Appointment Date":
             value = row["_appt_date"].strftime("%a, %d %b %Y")
@@ -199,7 +199,7 @@ def _render_details(row, display_fn=None):
         else:
             value = _cell(row, c)
         value = html.escape(value).replace("\n", "<br>")
-        (wide if c == "Remark" else fields).append((labels.get(c, c), value))
+        (wide if c in ("Remark", "Party_Name 1 Partners") else fields).append((labels.get(c, c), value))
     with st.container(border=True):
         head, close = st.columns([6, 1], vertical_alignment="center")
         head.markdown(

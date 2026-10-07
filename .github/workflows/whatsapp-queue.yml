@@ -1,0 +1,39 @@
+name: WhatsApp Pending Queue
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes — sends messages queued while WhatsApp was down
+  workflow_dispatch:
+
+# Never run two senders at once (prevents the same message going out twice)
+concurrency:
+  group: whatsapp-queue
+  cancel-in-progress: false
+
+jobs:
+  send-pending:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install gspread oauth2client pandas python-dotenv requests pyyaml
+
+      - name: Write Google service account credentials
+        run: |
+          mkdir -p credentials
+          printf '%s' "$GOOGLE_CREDENTIALS_JSON" > credentials/docregistry-credentials_bk.json.json
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+
+      - name: Send pending WhatsApp messages
+        env:
+          BAILEYS_API_KEY: ${{ secrets.BAILEYS_API_KEY }}
+        run: python whatsapp_queue_sender.py

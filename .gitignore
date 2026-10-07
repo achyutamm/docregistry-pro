@@ -28,4 +28,5 @@ Thumbs.db
 
 # Baileys WhatsApp session (contains auth credentials)
 baileys_service/auth_info_baileys/
+baileys_service/auth_info_local_test/
 baileys_service/node_modules/

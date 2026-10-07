@@ -37,14 +37,19 @@ from utils.notification_router import (
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
     set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
-    add_whatsapp_recipient, remove_whatsapp_recipient,
-    set_whatsapp_from_number, set_whatsapp_mode,
+    set_whatsapp_contact_numbers,
+    set_party1_checklist_enabled, set_party1_checklist_message, set_party1_checklist_items,
+    set_party1_checklist_test_mode,
 )
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
+from utils.sheets_manager import number_lines
+from utils.ui_helpers import auto_number_textarea
+from utils import whatsapp_queue, whatsapp_sender
+from utils import phone_utils
 
 # =====================================================
 # PAGE CONFIG — must be the very first st call
@@ -80,6 +85,7 @@ COL_DISPLAY = {
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
+    "Party_Name 1 Partners":  "Party 1 Partners",
     "Party_Name 2":           "Party Name 2",
     "Garvi_Application_ID":   "GARVI Application No",
     "Inedex_Application_No":  "Index Application No",
@@ -295,6 +301,9 @@ if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True):
 # INIT GOOGLE SHEETS
 # =====================================================
 sheets_manager = get_sheets_manager()
+
+# Send any WhatsApp messages queued while the service was down (throttled, never raises)
+whatsapp_queue.auto_flush_if_due()
 
 # =====================================================
 # DASHBOARD
@@ -755,7 +764,7 @@ elif page == "🔍 Search Records":
     else:
         display_cols = [
             "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
-            "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
+            "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
             "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
             "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time"
         ]
@@ -788,7 +797,7 @@ elif page == "🔍 Search Records":
                 "Party_Name 2": "Party Name 2", "Garvi_Application_ID": "GARVI App. No.",
                 "Inedex_Application_No": "Index App. No.", "Index_No": "Index No.",
                 "Search_No": "Search No.", "Title_Status": "Title Status",
-                "Remark": "Remark",
+                "Remark": "Remark", "Party_Name 1 Partners": "Party 1 Partners",
             }
             try:
                 h_df = get_history_cached(sheets_manager, selected_entry_id)
@@ -865,6 +874,7 @@ elif page == "✏️ Edit Records":
         "Search_No":              "Search No.",
         "Title_Status":           "Title Status",
         "Remark":                 "Remark",
+        "Party_Name 1 Partners":  "Party 1 Partners",
     }
 
     def _norm_time(v):
@@ -934,6 +944,7 @@ elif page == "✏️ Edit Records":
                     "Index_No":               str(edit_rec.get("Index_No", "")),
                     "Search_No":              str(edit_rec.get("Search_No", "")),
                     "Title_Status":           str(edit_rec.get("Title_Status", "")),
+                    "Party_Name 1 Partners":  str(edit_rec.get("Party_Name 1 Partners", "") or ""),
                 }
 
     if edit_rec is not None:
@@ -1041,11 +1052,24 @@ elif page == "✏️ Edit Records":
                     key="e_party1"
                 )
             with c2:
-                e_party1_mobile = st.text_input(
-                    "Party 1 Mobile No",
-                    value=str(edit_rec.get("Party_Name 1 Mobile_No", "")),
-                    key="e_party1_mobile"
+                _e_cc_val, _e_mob_val = phone_utils.split(edit_rec.get("Party_Name 1 Mobile_No", ""))
+                _e_cc_col, _e_mob_col = st.columns([1, 3])
+                e_party1_cc = _e_cc_col.text_input(
+                    "Code", value=_e_cc_val, max_chars=4, key="e_party1_cc"
                 )
+                e_party1_number = _e_mob_col.text_input(
+                    "Party 1 Mobile No", value=_e_mob_val, max_chars=10, key="e_party1_mobile"
+                )
+            # Stored form: plain 10 digits for +91, "+<code> <number>" otherwise
+            e_party1_mobile = phone_utils.join(e_party1_cc, e_party1_number)
+
+            e_partners = st.text_area(
+                "Party 1 Partners",
+                value=str(edit_rec.get("Party_Name 1 Partners", "") or ""),
+                placeholder="Click here and type the first partner name - press Enter for the next partner (1, 2, 3... are added automatically)",
+                key="e_partners",
+                height=100
+            )
 
             p2_opts = ["-- Select --"] + PARTY_NAME_2_OPTIONS
             e_party2 = st.selectbox(
@@ -1104,6 +1128,9 @@ elif page == "✏️ Edit Records":
             st.markdown("---")
             save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
 
+        # Live 1, 2, 3… numbering in the Party 1 Partners box while typing
+        auto_number_textarea("Party 1 Partners")
+
         # Always use the real Entry ID from the loaded record — not the search value
         # (user may have searched by GARVI ID)
         real_entry_id = str(edit_rec.get("Entry_ID", "")).replace(",", "")
@@ -1120,6 +1147,8 @@ elif page == "✏️ Edit Records":
             e_sro      = st.session_state.get("e_sro", "")
             if not e_party1.strip():
                 st.error("❌ Party Name 1 is required.")
+            elif phone_utils.validate(e_party1_cc, e_party1_number):
+                st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(e_party1_cc, e_party1_number)}")
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
@@ -1138,7 +1167,8 @@ elif page == "✏️ Edit Records":
                         index_no=e_index_no.strip(),
                         search_no=e_search.strip(),
                         title_status=e_status,
-                        remark=e_remark.strip()
+                        remark=e_remark.strip(),
+                        party1_partners=number_lines(e_partners),
                     )
 
                     if ok:
@@ -1162,6 +1192,7 @@ elif page == "✏️ Edit Records":
                             ("Search_No",              _snap.get("Search_No",              str(edit_rec.get("Search_No", ""))),               e_search.strip()),
                             ("Title_Status",           _snap.get("Title_Status",           str(edit_rec.get("Title_Status", ""))),           e_status),
                             ("Remark",                 _snap.get("Remark",                 str(edit_rec.get("Remark", "") or "")),             e_remark.strip()),
+                            ("Party_Name 1 Partners",  _snap.get("Party_Name 1 Partners",  str(edit_rec.get("Party_Name 1 Partners", "") or "")),  number_lines(e_partners)),
                         ]
                         changes = [(f, old, new) for f, old, new in field_map if old != new]
 
@@ -1181,6 +1212,7 @@ elif page == "✏️ Edit Records":
                             "Search_No":              e_search.strip(),
                             "Title_Status":           e_status,
                             "Remark":                 e_remark.strip(),
+                            "Party_Name 1 Partners":  number_lines(e_partners),
                         }
 
                         if changes:
@@ -1215,6 +1247,7 @@ elif page == "✏️ Edit Records":
                                     "Search_No":              e_search.strip(),
                                     "Title_Status":           e_status,
                                     "Remark":                 e_remark.strip(),
+                                    "Party_Name 1 Partners":  number_lines(e_partners),
                                 }
                                 notify_record_updated(
                                     entry_id=real_entry_id,
@@ -1686,11 +1719,12 @@ elif page == "⚙️ Configuration":
 
     _cfg_tabs = {
         "doc":       "📄 Document Types",
-        "party2":    "🏦 Party Name 2 (Banks)",
+        "party2":    "🏦 Party Name 2",
         "sro":       "🏢 SRO Offices",
         "email":     "📧 Admin Emails",
         "telegram":  "📢 Telegram",
         "whatsapp":  "📱 WhatsApp",
+        "checklist": "📋 Doc Checklist",
     }
     _cfg_tab_cols = st.columns(len(_cfg_tabs))
     for _cfg_col, (_cfg_key, _cfg_label) in zip(_cfg_tab_cols, _cfg_tabs.items()):
@@ -1814,7 +1848,7 @@ elif page == "⚙️ Configuration":
             st.rerun()
 
     elif _active_cfg_tab == "whatsapp":
-        st.subheader("WhatsApp Notifications (Twilio)")
+        st.subheader("WhatsApp Notifications")
 
         # ── Notification Provider ───────────────────────────────────────
         st.markdown("#### 🔀 Notification Provider")
@@ -1846,74 +1880,239 @@ elif page == "⚙️ Configuration":
 
         st.divider()
 
-        # ── Mode (Sandbox / Production) ─────────────────────────────────
-        st.markdown("#### 🧪 Mode")
-        _wa_mode = _wa_cfg.get("mode", "sandbox")
-        _new_mode = st.selectbox(
-            "Mode", ["sandbox", "production"],
-            index=0 if _wa_mode == "sandbox" else 1,
-            format_func=lambda x: "🧪 Sandbox (Twilio test number)" if x == "sandbox" else "🚀 Production (your registered number)",
-            key="cfg_wa_mode"
+        # ── Contact Numbers (shown in messages) ─────────────────────────
+        st.markdown("#### 📞 Contact Numbers")
+        st.caption(
+            "Office numbers clients can call. They are added to the Party 1 checklist message "
+            "wherever `{contact_numbers}` appears in its wording, joined as `9824551099 / 8980892103`. "
+            "Add a row with ➕ at the bottom, edit a number in place, or select a row and press Delete."
         )
-        if st.button("💾 Save Mode", key="cfg_wa_mode_save"):
-            set_whatsapp_mode(_new_mode)
-            st.session_state["cfg_flash"] = ("success", f"✅ WhatsApp mode set to '{_new_mode}'.")
+        _wa_contacts_df = st.data_editor(
+            pd.DataFrame({"Contact number": _wa_cfg.get("contact_numbers", []) or []}, dtype="object"),
+            num_rows="dynamic", hide_index=True, use_container_width=True,
+            key=f"cfg_wa_contacts_{cfgk}",
+        )
+        if st.button("💾 Save Contact Numbers", key="cfg_wa_contacts_save"):
+            try:
+                set_whatsapp_contact_numbers([
+                    v for v in _wa_contacts_df["Contact number"].tolist()
+                    if v is not None and str(v).strip() and str(v) != "nan"
+                ])
+                st.session_state["cfg_flash"] = ("success", "✅ Contact numbers saved.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+        st.divider()
+
+        # ── Pending messages (queued while WhatsApp was down) ───────────
+        st.markdown("#### 📥 Pending WhatsApp messages")
+        st.caption(
+            "New-entry group messages and Party 1 checklists that could not be sent because WhatsApp was down. "
+            "They are sent automatically when WhatsApp is back (checked every few minutes while the app is open)."
+        )
+        _wa_up = whatsapp_sender.baileys_connected()
+        st.markdown("WhatsApp service: " + ("🟢 **connected**" if _wa_up else "🔴 **not connected**"))
+        try:
+            _wa_pending = whatsapp_queue.pending()
+        except Exception as ex:
+            _wa_pending = []
+            st.warning(f"Could not read the pending queue: {ex}")
+        if not _wa_pending:
+            st.success("✅ No pending messages.")
+        else:
+            _wa_pending_df = pd.DataFrame([{
+                "Select": False,
+                "Queued at": p["Queued_At"],
+                "Type": "👥 Group" if p["Kind"] == whatsapp_queue.KIND_GROUP else "👤 Party 1 checklist",
+                "To": p["Target"] or "WhatsApp group",
+                "Entry ID": p["Entry_ID"],
+                "Tries": p["Attempts"],
+                "Last error": p["Last_Error"],
+            } for p in _wa_pending])
+            _wa_sel = st.data_editor(
+                _wa_pending_df, hide_index=True, use_container_width=True,
+                disabled=[c for c in _wa_pending_df.columns if c != "Select"],
+                key=f"cfg_wa_pending_{cfgk}",
+            )
+            _pq1, _pq2 = st.columns(2)
+            if _pq1.button(f"📤 Send pending now ({len(_wa_pending)})", key="cfg_wa_flush",
+                           use_container_width=True, disabled=not _wa_up):
+                _res = whatsapp_queue.flush()
+                st.session_state["cfg_flash"] = (
+                    "success" if not _res["stopped"] and not _res["failed"] else "warning",
+                    f"📤 Sent {_res['sent']} · still pending {_res['remaining']}"
+                    + (f" · WhatsApp went down again: {_res['stopped']}" if _res["stopped"] else "")
+                    + (f" · {_res['failed']} could not be sent (see Last error)" if _res["failed"] else ""),
+                )
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            _wa_rows = [p["_row"] for p, sel in zip(_wa_pending, _wa_sel["Select"]) if sel]
+            if _pq2.button(f"🗑️ Delete selected ({len(_wa_rows)})", key="cfg_wa_pending_del",
+                           use_container_width=True, disabled=not _wa_rows):
+                whatsapp_queue.delete(_wa_rows)
+                st.session_state["cfg_flash"] = ("success", f"🗑️ Removed {len(_wa_rows)} pending message(s).")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            if not _wa_up:
+                st.caption("Sending is disabled until the WhatsApp service is connected again.")
+
+    elif _active_cfg_tab == "checklist":
+        from utils.whatsapp_sender import party1_checklist_items, render_party1_checklist, send_direct_message
+
+        st.subheader("Party 1 Document Checklist")
+        st.caption(
+            "When a new entry is saved, a WhatsApp message is sent to the **Party 1 Mobile No** "
+            "listing the documents to bring for that Document Type. Pick a Document Type below "
+            "to see or change its documents."
+        )
+        _p1_cfg = config.get("party1_checklist", {}) or {}
+        _p1_items = _p1_cfg.get("items", {}) or {}
+        _p1_default = _p1_cfg.get("default_items", []) or []
+
+        _p1_enabled = st.checkbox(
+            "Send checklist message to Party 1 on New Entry",
+            value=bool(_p1_cfg.get("enabled", False)), key="cfg_p1_enabled"
+        )
+        if st.button("💾 Save", key="cfg_p1_enabled_save"):
+            set_party1_checklist_enabled(_p1_enabled)
+            st.session_state["cfg_flash"] = ("success", "✅ Party 1 checklist setting saved.")
+            st.rerun()
+
+        # ── Test mode: send every checklist to one test number ──────────
+        st.markdown("#### 🧪 Test mode")
+        _p1_test_cc = phone_utils.clean_code(_p1_cfg.get("test_country_code"))
+        _p1_test_on = bool(_p1_cfg.get("test_mode", False)) and bool(_p1_cfg.get("test_mobile"))
+        if _p1_test_on:
+            st.warning(f"🧪 Test mode is **ON** — checklist messages go to **{_p1_test_cc} {_p1_cfg.get('test_mobile')}**, "
+                       "not to the real Party 1 numbers.")
+        else:
+            st.caption("Test mode is off — checklist messages go to the real Party 1 Mobile No.")
+        _t1, _t2, _t3 = st.columns([2, 1, 2])
+        with _t1:
+            _p1_test_mode = st.checkbox(
+                "Send checklists to a test number instead of Party 1",
+                value=bool(_p1_cfg.get("test_mode", False)), key=f"cfg_p1_test_mode_{cfgk}"
+            )
+        with _t2:
+            _p1_test_code = st.text_input(
+                "Country code", value=_p1_test_cc, max_chars=4, key=f"cfg_p1_test_cc_{cfgk}"
+            )
+        with _t3:
+            _p1_test_mobile = st.text_input(
+                "Test mobile number", value=str(_p1_cfg.get("test_mobile", "") or ""),
+                max_chars=10, key=f"cfg_p1_test_mobile_{cfgk}"
+            )
+        if st.button("💾 Save Test Mode", key="cfg_p1_test_save"):
+            try:
+                set_party1_checklist_test_mode(_p1_test_mode, _p1_test_mobile, _p1_test_code)
+                st.session_state["cfg_flash"] = ("success", "✅ Test mode " + ("ON" if _p1_test_mode else "OFF") + " saved.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+        st.divider()
+
+        # ── Overview: Document Type → documents asked ───────────────────
+        _p1_doc_types = list(dict.fromkeys(DOCUMENT_TYPES + list(_p1_items.keys())))
+        st.markdown("#### 🗂️ Document Type → Documents to ask")
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Document Type": _dt,
+                    "Documents to ask": " · ".join(party1_checklist_items(_p1_cfg, _dt)) or "— nothing sent —",
+                }
+                for _dt in _p1_doc_types
+            ]),
+            hide_index=True, use_container_width=True,
+        )
+
+        st.divider()
+
+        # ── Edit one Document Type's list ───────────────────────────────
+        st.markdown("#### ✏️ Edit documents for a Document Type")
+        _p1_sel = st.selectbox("Document Type", _p1_doc_types, key="cfg_p1_doc")
+
+        # Every type is edited as its own list. A type that has never been saved
+        # still gets default_items at send time, so pre-fill the editor with exactly
+        # those — what you see here is what Party 1 currently receives.
+        _p1_start = _p1_items.get(_p1_sel, _p1_default)
+        _p1_df = st.data_editor(
+            pd.DataFrame({"Document to ask": _p1_start or []}, dtype="object"),
+            num_rows="dynamic", hide_index=True, use_container_width=True,
+            key=f"cfg_p1_items_{_p1_sel}_{cfgk}",
+        )
+        _p1_new_items = [str(v).strip() for v in _p1_df["Document to ask"].tolist()
+                         if v is not None and str(v).strip() and str(v) != "nan"]
+        st.caption("Add rows with ➕ at the bottom of the table; select a row and press Delete to remove it. "
+                   "An empty list means no message is sent for this type.")
+
+        if st.button("💾 Save Documents", key="cfg_p1_items_save"):
+            set_party1_checklist_items(_p1_sel, _p1_new_items)
+            st.session_state["cfg_flash"] = ("success", f"✅ Checklist for '{_p1_sel}' saved.")
+            st.session_state["cfg_widget_key"] += 1
             st.rerun()
 
         st.divider()
 
-        # ── From Number ─────────────────────────────────────────────────
-        st.markdown("#### 📞 Sender Number (From)")
-        st.caption("Sandbox: use `+14155238886`. Production: your registered WhatsApp Business number.")
-        _wa_from = _wa_cfg.get("from_number", "")
-        c1, c2 = st.columns([4, 1])
-        _new_from = c1.text_input("From number", value=_wa_from, key=f"cfg_wa_from_{cfgk}", placeholder="+14155238886")
-        if c2.button("💾 Save", key="cfg_wa_from_save", use_container_width=True):
-            try:
-                set_whatsapp_from_number(_new_from)
-                st.session_state["cfg_flash"] = ("success", f"✅ From number updated to '{_new_from}'.")
-                st.session_state["cfg_widget_key"] += 1
-                st.rerun()
-            except ValueError as ex:
-                st.error(f"❌ {ex}")
-
-        st.divider()
-
-        # ── Recipient Numbers ───────────────────────────────────────────
-        st.markdown("#### 📋 Recipient Numbers")
-        st.caption("Numbers that receive WhatsApp notifications. Include country code, e.g. `+919876543210`.")
-        _wa_recipients = _wa_cfg.get("recipient_numbers", [])
-        if not _wa_recipients:
-            st.info("No recipient numbers yet. Add one below.")
-        else:
-            for _rnum in _wa_recipients:
-                _rc1, _rc2 = st.columns([5, 1])
-                _rc1.markdown(f"`{_rnum}`")
-                if _rc2.button("🗑️", key=f"wa_del_{_rnum}", help=f"Remove {_rnum}"):
-                    try:
-                        remove_whatsapp_recipient(_rnum)
-                        st.session_state["cfg_flash"] = ("success", f"🗑️ Removed {_rnum} from WhatsApp recipients.")
-                        st.session_state["cfg_widget_key"] += 1
-                        st.rerun()
-                    except ValueError as ex:
-                        st.error(f"❌ {ex}")
-
-        _rc1, _rc2 = st.columns([4, 1])
-        _new_recipient = _rc1.text_input(
-            "Add recipient", key=f"wa_recipient_new_{cfgk}",
-            label_visibility="collapsed", placeholder="+919876543210"
+        # ── Message wording (shared by all types) ───────────────────────
+        st.markdown("#### ✉️ Message wording (same for every Document Type)")
+        _p1_msg = st.text_area(
+            "Message", value=str(_p1_cfg.get("message", "") or ""), height=230,
+            key=f"cfg_p1_msg_{cfgk}",
         )
-        if _rc2.button("➕ Add", key="wa_recipient_add", use_container_width=True):
-            try:
-                add_whatsapp_recipient(_new_recipient)
-                st.session_state["cfg_flash"] = ("success", f"✅ Added {_new_recipient.strip()} to WhatsApp recipients.")
-                st.session_state["cfg_widget_key"] += 1
-                st.rerun()
-            except ValueError as ex:
-                st.error(f"❌ {ex}")
-
-        st.divider()
         st.caption(
-            "🔐 Twilio Account SID and Auth Token are stored securely in the `.env` file "
-            "and are not editable from this UI."
+            "`{checklist}` is replaced by the numbered document list. Other placeholders: "
+            "`{party_name_1}` `{party_name_2}` `{doc_type}` `{appointment_date}` `{appointment_time}` "
+            "`{sro}` `{entry_id}` `{company}` · `{partners}` adds the partner names (with the heading "
+            "below) only when the entry has Party 1 Partners · `{contact_numbers}` = the office numbers from "
+            "Configuration → WhatsApp (a line using it is left out if none are set) · `*bold*` works on WhatsApp."
         )
+        _p1_heading = st.text_input(
+            "Heading shown above partner names",
+            value=str(_p1_cfg.get("partners_heading", "") or "Partners"),
+            placeholder="e.g. Partners", key=f"cfg_p1_heading_{cfgk}",
+        )
+        if st.button("💾 Save Message", key="cfg_p1_msg_save"):
+            try:
+                set_party1_checklist_message(_p1_msg, _p1_heading)
+                st.session_state["cfg_flash"] = ("success", "✅ Checklist message wording saved.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
+        st.divider()
+
+        # ── Preview + test (uses the unsaved edits above) ───────────────
+        _p1_preview_type = _p1_sel
+        _p1_draft_items = {**_p1_items, _p1_sel: _p1_new_items}
+        _p1_draft_cfg = {"message": _p1_msg, "items": _p1_draft_items, "default_items": _p1_default,
+                         "partners_heading": _p1_heading}
+        _p1_sample = {
+            "entry_id": "ENT-PREVIEW", "doc_type": _p1_preview_type,
+            "appointment_date": date.today().strftime("%d/%m/%Y"), "appointment_time": "11:30:00",
+            "sro": "Ahmedabad- 8 Sola", "party_name_1": "Ramesh Patel", "party_name_2": "NCB SOLA",
+            "party1_partners": "1 Rameshbhai\n2 Dineshbhai",
+        }
+        st.markdown(f"#### 👁️ Preview — {_p1_preview_type} (sample data, includes unsaved edits)")
+        try:
+            _p1_body = render_party1_checklist(_p1_draft_cfg, _p1_sample, config.get("app", {}).get("company", ""),
+                                              config.get("whatsapp", {}).get("contact_numbers", []))
+        except (ValueError, IndexError) as ex:
+            _p1_body = False
+            st.error(f"❌ Message has a broken {{placeholder}}: {ex}")
+        if _p1_body:
+            st.text(_p1_body)
+            with st.popover("📤 Send this preview as a test"):
+                _p1_test_no = st.text_input("Mobile No (10 digits)", key="cfg_p1_test_no", max_chars=10)
+                if st.button("Send", key="cfg_p1_test_send"):
+                    try:
+                        send_direct_message(_p1_test_no, _p1_body)
+                        st.success(f"✅ Test message sent to {_p1_test_no}.")
+                    except Exception as ex:
+                        st.error(f"❌ {ex}")
+        elif _p1_body is None:
+            st.info("No message would be sent for this Document Type (no documents listed).")
