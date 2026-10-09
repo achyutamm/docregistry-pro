@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date as _date
 import os
 import re
+import time
 from dotenv import load_dotenv
 
 from utils.date_utils import parse_appt_date, parse_appt_date_series
@@ -505,25 +506,48 @@ class SheetsManager:
         if not first_row or first_row[0] != "Username":
             self.users_sheet.insert_row(self._USERS_SHEET_HEADERS, 1)
 
-    def get_all_users(self) -> dict:
-        """Return all users as {username: {password, name, role, config_access}}."""
+    _USERS_CACHE_TTL = 60   # seconds — the user list is read on every page load
+
+    def _user_rows(self, username: str) -> list:
+        """Sheet row numbers of every row for this username (duplicates included)."""
+        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
+        return [i for i, row in enumerate(records, start=2)
+                if str(row.get("Username", "")).strip() == username]
+
+    def _invalidate_users_cache(self):
+        self._users_cache, self._users_cache_at = None, 0.0
+
+    def get_all_users(self, force: bool = False) -> dict:
+        """Return all users as {username: {password, name, role, config_access}}.
+
+        Cached for _USERS_CACHE_TTL seconds (this object is shared by every session),
+        so page loads don't each spend a Google Sheets read — that is what kept hitting
+        the 60-reads-per-minute quota. Writes below clear the cache. If a read fails,
+        the last good list is returned instead of an empty one.
+        If a username appears more than once, the FIRST row wins — the update methods
+        write to every row, and the first row is the one that was edited historically.
+        """
         if not hasattr(self, 'users_sheet'):
             return {}
+        cached = getattr(self, "_users_cache", None)
+        if cached is not None and not force and time.time() - getattr(self, "_users_cache_at", 0) < self._USERS_CACHE_TTL:
+            return dict(cached)
         try:
             records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
         except Exception:
-            return {}
+            return dict(cached) if cached is not None else {}
         users = {}
         for row in records:
             uname = str(row.get("Username", "")).strip()
-            if uname:
+            if uname and uname not in users:
                 users[uname] = {
                     "password":      str(row.get("Password_Hash", "")),
                     "name":          str(row.get("Name", uname)),
                     "role":          str(row.get("Role", "staff")).lower(),
                     "config_access": str(row.get("Config_Access", "False")).lower() in ("true", "1", "yes"),
                 }
-        return users
+        self._users_cache, self._users_cache_at = users, time.time()
+        return dict(users)
 
     def add_user_to_sheet(self, username: str, password_hash: str, name: str,
                           role: str, config_access: bool = False):
@@ -532,54 +556,55 @@ class SheetsManager:
             str(config_access),
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ])
+        self._invalidate_users_cache()
+
+    def _update_user_column(self, username: str, col: int, value) -> bool:
+        """Write one column on EVERY row for this user, so duplicates can't disagree."""
+        rows = self._user_rows(username)
+        for i in rows:
+            self.users_sheet.update_cell(i, col, value)
+        self._invalidate_users_cache()
+        return bool(rows)
 
     def update_user_password_sheet(self, username: str, password_hash: str) -> bool:
-        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
-        for i, row in enumerate(records, start=2):
-            if str(row.get("Username", "")).strip() == username:
-                self.users_sheet.update_cell(i, 2, password_hash)
-                return True
-        return False
+        return self._update_user_column(username, 2, password_hash)
 
     def update_user_role_sheet(self, username: str, role: str) -> bool:
-        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
-        for i, row in enumerate(records, start=2):
-            if str(row.get("Username", "")).strip() == username:
-                self.users_sheet.update_cell(i, 4, role)
-                return True
-        return False
+        return self._update_user_column(username, 4, role)
 
     def update_user_config_access_sheet(self, username: str, config_access: bool) -> bool:
-        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
-        for i, row in enumerate(records, start=2):
-            if str(row.get("Username", "")).strip() == username:
-                self.users_sheet.update_cell(i, 5, str(config_access))
-                return True
-        return False
+        return self._update_user_column(username, 5, str(config_access))
 
     def delete_user_from_sheet(self, username: str) -> bool:
-        records = self.users_sheet.get_all_records(expected_headers=self._USERS_SHEET_HEADERS)
-        for i, row in enumerate(records, start=2):
-            if str(row.get("Username", "")).strip() == username:
-                self.users_sheet.delete_rows(i)
-                return True
-        return False
+        rows = self._user_rows(username)
+        for i in sorted(rows, reverse=True):     # bottom-up so row numbers stay valid
+            self.users_sheet.delete_rows(i)
+        self._invalidate_users_cache()
+        return bool(rows)
 
     def seed_users_from_config(self, config_users: dict):
-        """One-time migration: seed the Users sheet from config.yaml users if the sheet is empty."""
-        if not hasattr(self, 'users_sheet'):
+        """One-time migration: seed the Users sheet from config.yaml users if the sheet is empty.
+
+        Only seeds when the sheet really has no user rows. A failed read raises (the
+        caller falls back to config.yaml for that run) instead of looking "empty" —
+        previously every failed read re-appended all users, creating duplicates.
+        Checked once per SheetsManager instance.
+        """
+        if not hasattr(self, 'users_sheet') or getattr(self, "_users_seed_checked", False):
             return
-        if self.get_all_users():
-            return  # already populated — skip
-        for uname, udata in config_users.items():
-            self.users_sheet.append_row([
-                uname,
-                str(udata.get("password", "")),
-                str(udata.get("name", uname)),
-                str(udata.get("role", "staff")),
-                str(udata.get("config_access", False)),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ])
+        usernames = self.users_sheet.col_values(1)[1:]   # raises on API errors — never seed then
+        if not any(str(u).strip() for u in usernames):
+            for uname, udata in config_users.items():
+                self.users_sheet.append_row([
+                    uname,
+                    str(udata.get("password", "")),
+                    str(udata.get("name", uname)),
+                    str(udata.get("role", "staff")),
+                    str(udata.get("config_access", False)),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ])
+            self._invalidate_users_cache()
+        self._users_seed_checked = True
 
     # =====================================================
     # READ RECORDS
