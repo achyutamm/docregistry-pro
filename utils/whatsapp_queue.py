@@ -22,27 +22,37 @@ HEADERS = ["Queued_At", "Kind", "Target", "Entry_ID", "Message", "Attempts", "La
 KIND_GROUP, KIND_DIRECT = "group", "direct"
 AUTO_FLUSH_EVERY = 300   # seconds between automatic checks per browser session
 
-_ws = None   # cached worksheet handle
+MISSING_RECHECK = 300    # seconds to remember that the queue tab doesn't exist yet
+
+_ws = None              # cached worksheet handle
+_wb = None              # cached spreadsheet handle
+_missing_until = 0.0    # skip lookups until then while the tab doesn't exist
 
 
 def _worksheet(create: bool = False):
     """The queue tab. Only enqueue() creates it (create=True) — reading never adds a tab
     to the spreadsheet; it returns None while nothing has ever been queued."""
-    global _ws
+    global _ws, _wb, _missing_until
     if _ws is not None:
         return _ws
-    from utils.sheets_manager import _load_google_config
-    cred_path, sheet_id, _ = _load_google_config()
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        cred_path, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    )
-    workbook = gspread.authorize(creds).open_by_key(sheet_id)
+    # "No queue tab yet" is remembered for a while so routine checks don't
+    # spend Google Sheets reads (the API allows 60 reads/minute).
+    if not create and time.time() < _missing_until:
+        return None
+    if _wb is None:
+        from utils.sheets_manager import _load_google_config
+        cred_path, sheet_id, _ = _load_google_config()
+        creds = ServiceAccountCredentials.from_json_keyfile_name(
+            cred_path, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        )
+        _wb = gspread.authorize(creds).open_by_key(sheet_id)
     try:
-        ws = workbook.worksheet(QUEUE_TAB)
+        ws = _wb.worksheet(QUEUE_TAB)
     except gspread.exceptions.WorksheetNotFound:
         if not create:
+            _missing_until = time.time() + MISSING_RECHECK
             return None
-        ws = workbook.add_worksheet(title=QUEUE_TAB, rows=200, cols=len(HEADERS))
+        ws = _wb.add_worksheet(title=QUEUE_TAB, rows=200, cols=len(HEADERS))
         ws.append_row(HEADERS, value_input_option="RAW")
     _ws = ws
     return ws
