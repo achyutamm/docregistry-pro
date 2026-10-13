@@ -899,17 +899,33 @@ elif page == "✏️ Edit Records":
 
     # Search by Entry ID or GARVI Application ID
     col_type, col_search, col_btn = st.columns([2, 4, 1])
+    # Same fields Search Records looks in; partial, case-insensitive match
+    _EDIT_SEARCH_FIELDS = {
+        "GARVI Application ID": ["Garvi_Application_ID"],
+        "Entry ID":             ["Entry_ID"],
+        "Party Name":           ["Party_Name 1", "Party_Name 1 Partners"],
+        "Index No":             ["Index_No"],
+        "Index Application No": ["Inedex_Application_No"],
+        "Search No":            ["Search_No"],
+        "Party 1 Mobile No":    ["Party_Name 1 Mobile_No"],
+    }
+    _EDIT_SEARCH_FIELDS["Any field"] = [c for cols in _EDIT_SEARCH_FIELDS.values() for c in cols]
+    _EDIT_PLACEHOLDERS = {
+        "GARVI Application ID": "e.g., 20261100843645", "Entry ID": "e.g., 20250515143022",
+        "Party Name": "e.g., Ramesh Patel", "Index No": "e.g., 9729-2026",
+        "Index Application No": "e.g., 80120260372851", "Search No": "e.g., 202612030719415",
+        "Party 1 Mobile No": "e.g., 9876543210", "Any field": "Party name, Entry ID, GARVI, Index or Search No…",
+    }
     with col_type:
         search_by = st.selectbox(
             "Search By",
-            ["GARVI Application ID", "Entry ID"],
+            list(_EDIT_SEARCH_FIELDS),
             key=f"edit_search_by_{st.session_state['edit_form_key']}"
         )
     with col_search:
-        search_placeholder = "e.g., 20250515143022" if search_by == "Entry ID" else "e.g., 20261100843645"
         edit_entry_id = st.text_input(
             f"Enter {search_by}",
-            placeholder=search_placeholder,
+            placeholder=_EDIT_PLACEHOLDERS[search_by],
             key=f"edit_entry_id_{st.session_state['edit_form_key']}"
         )
     with col_btn:
@@ -918,18 +934,44 @@ elif page == "✏️ Edit Records":
 
     edit_rec = None
     if edit_entry_id.strip():
-        if search_by == "Entry ID":
-            match = df[df["Entry_ID"].astype(str) == edit_entry_id.strip()]
-        else:
-            match = df[df["Garvi_Application_ID"].astype(str) == edit_entry_id.strip()]
+        _kw = edit_entry_id.strip().lower()
+        _mask = pd.Series(False, index=df.index)
+        for _col in _EDIT_SEARCH_FIELDS[search_by]:
+            if _col in df.columns:
+                _mask |= df[_col].astype(str).str.replace(",", "", regex=False).str.lower()                                  .str.contains(_kw, regex=False, na=False)
+        match = df[_mask]
         if match.empty:
             st.warning(f"No record found with {search_by}: `{edit_entry_id.strip()}`")
         else:
-            edit_rec = match.iloc[0]
+            if len(match) == 1:
+                edit_rec = match.iloc[0]
+            else:
+                # Several records match (e.g. a common party name) — let the user pick one
+                # Label → row; labels start with the Entry ID so they're unique
+                _labels = {
+                    " · ".join(x for x in (
+                        str(r.get("Entry_ID", "")).replace(",", ""), str(r.get("Party_Name 1", "")),
+                        str(r.get("Doc_Type", "")), str(r.get("Appointment Date", "")), str(r.get("SRO", "")),
+                    ) if x): i
+                    for i, r in match.iterrows()
+                }
+                _pick = st.selectbox(
+                    f"{len(match)} records match — choose the one to edit",
+                    list(_labels),
+                    key=f"edit_pick_{st.session_state['edit_form_key']}_{_kw}",
+                )
+                edit_rec = match.loc[_labels[_pick]]
+            _rec_id = str(edit_rec.get("Entry_ID", "")).replace(",", "")
+            # A different record than last time: clear the edit form's remembered values
+            # so it shows this record, not the previous one.
+            if st.session_state.get("_edit_loaded_id") != _rec_id:
+                for _k in [k for k in st.session_state if str(k).startswith("e_")]:
+                    del st.session_state[_k]
+                st.session_state["_edit_loaded_id"] = _rec_id
             # Snapshot the values as-loaded from Sheets so that after save_btn fires
             # (and get_all_records() returns the already-updated row), we still
             # compare against the ORIGINAL values the user saw when they opened the form.
-            _snap_key = f"pre_edit_snap_{st.session_state['edit_form_key']}"
+            _snap_key = f"pre_edit_snap_{st.session_state['edit_form_key']}_{_rec_id}"
             if _snap_key not in st.session_state:
                 st.session_state[_snap_key] = {
                     "Doc_Type":               str(edit_rec.get("Doc_Type", "")),
@@ -1176,7 +1218,7 @@ elif page == "✏️ Edit Records":
                         # Use the pre-edit snapshot so we compare against values the user
                         # saw when they opened the form — not the already-updated row that
                         # get_all_records() would return after the update above.
-                        _snap_key = f"pre_edit_snap_{st.session_state['edit_form_key']}"
+                        _snap_key = f"pre_edit_snap_{st.session_state['edit_form_key']}_{real_entry_id}"
                         _snap = st.session_state.get(_snap_key, {})
                         field_map = [
                             ("Doc_Type",               _snap.get("Doc_Type",               str(edit_rec.get("Doc_Type", ""))),               e_doc_type),
@@ -1883,20 +1925,37 @@ elif page == "⚙️ Configuration":
         # ── Contact Numbers (shown in messages) ─────────────────────────
         st.markdown("#### 📞 Contact Numbers")
         st.caption(
-            "Office numbers clients can call. They are added to the Party 1 checklist message "
-            "wherever `{contact_numbers}` appears in its wording, joined as `9824551099 / 8980892103`. "
-            "Add a row with ➕ at the bottom, edit a number in place, or select a row and press Delete."
+            "Office contacts clients can call. They are added to the Party 1 checklist message wherever "
+            "`{contact_numbers}` appears in its wording, as `Advocate Akhil Gohil - 8980892103 / "
+            "Advocate Parag Mehta - 7600433220`. Add a row with ➕ at the bottom, edit a cell in place, "
+            "or tick 🗑️ Delete and save to remove a contact."
         )
+        _wa_contact_rows = [
+            ({"Title": c.get("title", ""), "Name": c.get("name", ""), "Contact number": c.get("number", "")}
+             if isinstance(c, dict) else {"Title": "Advocate", "Name": "", "Contact number": str(c)})
+            for c in (_wa_cfg.get("contact_numbers", []) or [])
+        ]
         _wa_contacts_df = st.data_editor(
-            pd.DataFrame({"Contact number": _wa_cfg.get("contact_numbers", []) or []}, dtype="object"),
+            pd.DataFrame(_wa_contact_rows, columns=["Title", "Name", "Contact number"], dtype="object")
+              .assign(**{"🗑️ Delete": False}),
             num_rows="dynamic", hide_index=True, use_container_width=True,
+            column_config={
+                "Title": st.column_config.TextColumn("Title", default="Advocate", width="small"),
+                "Name": st.column_config.TextColumn("Name"),
+                "Contact number": st.column_config.TextColumn("Contact number", max_chars=15),
+                "🗑️ Delete": st.column_config.CheckboxColumn("🗑️ Delete", default=False, width="small",
+                                                            help="Tick and click Save to remove this contact"),
+            },
             key=f"cfg_wa_contacts_{cfgk}",
         )
+        st.caption("👁️ In messages: " + (" / ".join(filter(None, (
+            whatsapp_sender.contact_label({"title": r["Title"], "name": r["Name"], "number": r["Contact number"]})
+            for r in _wa_contacts_df.fillna("").to_dict("records") if not r.get("🗑️ Delete")))) or "— no contacts —"))
         if st.button("💾 Save Contact Numbers", key="cfg_wa_contacts_save"):
             try:
                 set_whatsapp_contact_numbers([
-                    v for v in _wa_contacts_df["Contact number"].tolist()
-                    if v is not None and str(v).strip() and str(v) != "nan"
+                    {"title": r["Title"], "name": r["Name"], "number": r["Contact number"]}
+                    for r in _wa_contacts_df.to_dict("records") if not r.get("🗑️ Delete")
                 ])
                 st.session_state["cfg_flash"] = ("success", "✅ Contact numbers saved.")
                 st.session_state["cfg_widget_key"] += 1
@@ -1980,33 +2039,49 @@ elif page == "⚙️ Configuration":
             st.session_state["cfg_flash"] = ("success", "✅ Party 1 checklist setting saved.")
             st.rerun()
 
-        # ── Test mode: send every checklist to one test number ──────────
+        # ── Test mode: send every checklist to the test recipients ──────
         st.markdown("#### 🧪 Test mode")
-        _p1_test_cc = phone_utils.clean_code(_p1_cfg.get("test_country_code"))
-        _p1_test_on = bool(_p1_cfg.get("test_mode", False)) and bool(_p1_cfg.get("test_mobile"))
-        if _p1_test_on:
-            st.warning(f"🧪 Test mode is **ON** — checklist messages go to **{_p1_test_cc} {_p1_cfg.get('test_mobile')}**, "
-                       "not to the real Party 1 numbers.")
+        from utils.whatsapp_sender import test_recipients as _p1_test_recipients
+        _p1_testers = _p1_test_recipients(_p1_cfg)
+        if _p1_cfg.get("test_mode", False) and _p1_testers:
+            st.warning("🧪 Test mode is **ON** — checklist messages go to **"
+                       + ", ".join(f"{n} ({num})" for n, num in _p1_testers)
+                       + "**, not to the real Party 1 numbers.")
         else:
             st.caption("Test mode is off — checklist messages go to the real Party 1 Mobile No.")
-        _t1, _t2, _t3 = st.columns([2, 1, 2])
-        with _t1:
-            _p1_test_mode = st.checkbox(
-                "Send checklists to a test number instead of Party 1",
-                value=bool(_p1_cfg.get("test_mode", False)), key=f"cfg_p1_test_mode_{cfgk}"
-            )
-        with _t2:
-            _p1_test_code = st.text_input(
-                "Country code", value=_p1_test_cc, max_chars=4, key=f"cfg_p1_test_cc_{cfgk}"
-            )
-        with _t3:
-            _p1_test_mobile = st.text_input(
-                "Test mobile number", value=str(_p1_cfg.get("test_mobile", "") or ""),
-                max_chars=10, key=f"cfg_p1_test_mobile_{cfgk}"
-            )
+        _p1_test_mode = st.checkbox(
+            "Send checklists to the test recipients below instead of Party 1",
+            value=bool(_p1_cfg.get("test_mode", False)), key=f"cfg_p1_test_mode_{cfgk}"
+        )
+        # Rows: saved test_recipients, or the old single test number if that's all there is
+        _p1_rows = [
+            {"Name": r.get("name", ""), "Country code": phone_utils.clean_code(r.get("country_code")),
+             "Mobile number": str(r.get("mobile", ""))}
+            for r in (_p1_cfg.get("test_recipients") or [])
+        ] or ([{"Name": "Test", "Country code": phone_utils.clean_code(_p1_cfg.get("test_country_code")),
+                "Mobile number": str(_p1_cfg.get("test_mobile"))}] if _p1_cfg.get("test_mobile") else [])
+        _p1_test_df = st.data_editor(
+            pd.DataFrame(_p1_rows, columns=["Name", "Country code", "Mobile number"], dtype="object")
+              .assign(**{"🗑️ Delete": False}),
+            num_rows="dynamic", hide_index=True, use_container_width=True,
+            column_config={
+                "Name": st.column_config.TextColumn("Name", required=True),
+                "Country code": st.column_config.TextColumn("Country code", default="+91", max_chars=4),
+                "Mobile number": st.column_config.TextColumn("Mobile number", max_chars=10, required=True),
+                "🗑️ Delete": st.column_config.CheckboxColumn("🗑️ Delete", default=False, width="small",
+                                                            help="Tick and click Save to remove this person"),
+            },
+            key=f"cfg_p1_testers_{cfgk}",
+        )
+        st.caption("Add a person with ➕ at the bottom, edit a cell in place, or tick 🗑️ Delete and save to remove someone. "
+                   "Every checklist goes to all of them while test mode is on.")
         if st.button("💾 Save Test Mode", key="cfg_p1_test_save"):
             try:
-                set_party1_checklist_test_mode(_p1_test_mode, _p1_test_mobile, _p1_test_code)
+                set_party1_checklist_test_mode(_p1_test_mode, [
+                    {"name": r["Name"], "country_code": r["Country code"], "mobile": r["Mobile number"]}
+                    for r in _p1_test_df.to_dict("records")
+                    if not r.get("🗑️ Delete") and any(str(v or "").strip() and str(v) != "nan" for v in r.values())
+                ])
                 st.session_state["cfg_flash"] = ("success", "✅ Test mode " + ("ON" if _p1_test_mode else "OFF") + " saved.")
                 st.session_state["cfg_widget_key"] += 1
                 st.rerun()
@@ -2065,7 +2140,8 @@ elif page == "⚙️ Configuration":
         )
         st.caption(
             "`{checklist}` is replaced by the numbered document list. Other placeholders: "
-            "`{party_name_1}` `{party_name_2}` `{doc_type}` `{appointment_date}` `{appointment_time}` "
+            "`{party_name_1}` `{party_name_2}` (its line is left out when the entry has no Party 2) "
+            "`{doc_type}` `{appointment_date}` `{appointment_time}` "
             "`{sro}` `{entry_id}` `{company}` · `{partners}` adds the partner names (with the heading "
             "below) only when the entry has Party 1 Partners · `{contact_numbers}` = the office numbers from "
             "Configuration → WhatsApp (a line using it is left out if none are set) · `*bold*` works on WhatsApp."

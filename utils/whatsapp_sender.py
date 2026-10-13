@@ -192,6 +192,21 @@ def party1_checklist_items(checklist_cfg: dict, doc_type: str) -> list:
     return [str(i).strip() for i in (items or []) if str(i).strip()]
 
 
+def contact_label(entry) -> str:
+    """One office contact as printed in messages: "Advocate Akhil Gohil - 8980892103".
+    Entries are {title, name, number}; older configs stored just the number string."""
+    if not isinstance(entry, dict):
+        return str(entry or "").strip()
+    number = str(entry.get("number") or "").strip()
+    name = " ".join(str(entry.get("name") or "").split())
+    title = " ".join(str(entry.get("title") or "").split())
+    if title and name and not name.lower().startswith(title.lower()):
+        name = f"{title} {name}"
+    if not number:
+        return ""
+    return f"{name} - {number}" if name else number
+
+
 def render_party1_checklist(checklist_cfg: dict, record: dict, company: str = "", contact_numbers=None):
     """Fill the message template for this record, or None when the
     Document Type has no documents to ask for."""
@@ -200,14 +215,17 @@ def render_party1_checklist(checklist_cfg: dict, record: dict, company: str = ""
     if not items or not template:
         return None
 
-    contacts = " / ".join(str(n).strip() for n in (contact_numbers or []) if str(n).strip())
-    if not contacts:
-        # No office numbers configured: drop the "reach out to {contact_numbers}" line entirely
-        template = "\n".join(l for l in template.splitlines() if "{contact_numbers}" not in l)
+    contacts = " / ".join(filter(None, (contact_label(c) for c in (contact_numbers or []))))
+    party2 = str(record.get("party_name_2", "") or "").strip()
+    # Optional lines: a line using {contact_numbers} / {party_name_2} is left out
+    # entirely when there's nothing to put in it (no office numbers / no Party 2).
+    for placeholder, value in (("{contact_numbers}", contacts), ("{party_name_2}", party2)):
+        if not value:
+            template = "\n".join(l for l in template.splitlines() if placeholder not in l)
 
     values = _KeepMissing({k: ("" if v is None else str(v)) for k, v in record.items()})
     values["appointment_time"] = _format_appt_time(record.get("appointment_time", ""))
-    values["party_name_2"] = record.get("party_name_2") or "—"
+    values["party_name_2"] = party2
     values["checklist"] = "\n".join(f"{n}. {item}" for n, item in enumerate(items, 1))
     # {partners} is a whole block (heading + names) when Party 1 has partners,
     # and empty otherwise — so the template needs no extra blank-line handling.
@@ -243,11 +261,11 @@ def send_party1_checklist(record: dict):
 
     p1_cfg = cfg.get("party1_checklist", {}) or {}
     mobile = str(record.get("party1_mobile", "")).strip()
-    test_mobile = phone_utils.join(p1_cfg.get("test_country_code"), p1_cfg.get("test_mobile"))
     test_mode = bool(p1_cfg.get("test_mode", False))
-    if test_mode and not test_mobile:
+    testers = test_recipients(p1_cfg)
+    if test_mode and not testers:
         # Never fall back to the real party while test mode is on
-        return "skipped", "Test mode is on but no test mobile number is set in Doc Checklist."
+        return "skipped", "Test mode is on but no test recipients are set in Doc Checklist."
 
     if not mobile and not test_mode:
         return "skipped", "No Party 1 mobile number entered."
@@ -257,32 +275,59 @@ def send_party1_checklist(record: dict):
         return "skipped", f"No documents configured for '{record.get('doc_type', '')}' in Doc Checklist."
 
     if test_mode:
-        # Test mode: never message the real party — send to the configured test number,
+        # Test mode: never message the real party — send to every test recipient,
         # with a header saying who it would have gone to.
         body = f"🧪 *TEST* — would go to Party 1: {mobile or 'no number entered'}\n\n{body}"
-        target, prefix = test_mobile, "🧪 TEST MODE — "
-        sent_note = f"checklist sent to test number {test_mobile} (not to Party 1 {mobile or '— no number'})."
+        recipients, prefix = testers, "🧪 TEST MODE — "
     else:
-        target, prefix = mobile, ""
-        sent_note = f"Checklist sent on WhatsApp to Party 1 ({mobile})."
+        recipients, prefix = [("Party 1", mobile)], ""
 
-    try:
-        send_direct_message(target, body)
-        return "sent", prefix + sent_note
-    except WhatsAppUnavailable as ex:
-        # Service down / not linked: keep the message and send it when WhatsApp is back
+    # Send to each recipient on its own; WhatsApp down → that message is queued.
+    sent, queued, not_on_wa, failed = [], [], [], []
+    for name, target in recipients:
+        who = f"{name} ({target})"
         try:
-            from utils import whatsapp_queue
-            whatsapp_queue.enqueue(whatsapp_queue.KIND_DIRECT, target, body, record.get("entry_id", ""), str(ex))
-        except Exception as q_ex:
-            return "failed", f"{prefix}WhatsApp is down ({ex}) and the checklist could not be queued: {q_ex}"
-        return "queued", (f"{prefix}WhatsApp is not reachable right now — the checklist to {target} is saved as "
-                          "pending and will be sent automatically when WhatsApp is back.")
-    except NotOnWhatsApp:
-        return "not_on_whatsapp", (f"{prefix}{target} is not on WhatsApp — the checklist was NOT sent. "
-                                   "Please check the number in Edit Records, or inform Party 1 by phone.")
-    except Exception as ex:
-        return "failed", f"{prefix}Could not send WhatsApp to {target}: {ex}"
+            send_direct_message(target, body)
+            sent.append(who)
+        except WhatsAppUnavailable as ex:
+            try:
+                from utils import whatsapp_queue
+                whatsapp_queue.enqueue(whatsapp_queue.KIND_DIRECT, target, body, record.get("entry_id", ""), str(ex))
+                queued.append(who)
+            except Exception as q_ex:
+                failed.append(f"{who}: WhatsApp is down and the message could not be queued ({q_ex})")
+        except NotOnWhatsApp:
+            not_on_wa.append(who)
+        except Exception as ex:
+            failed.append(f"{who}: {ex}")
+
+    parts = []
+    if sent:
+        parts.append("Checklist sent on WhatsApp to " + ", ".join(sent)
+                     + (f" (not to Party 1 {mobile or '— no number'})" if test_mode else "") + ".")
+    if queued:
+        parts.append("WhatsApp is not reachable right now — the checklist to " + ", ".join(queued)
+                     + " is saved as pending and will be sent automatically when WhatsApp is back.")
+    if not_on_wa:
+        parts.append(", ".join(not_on_wa) + " is not on WhatsApp — the checklist was NOT sent"
+                     + (" to them." if test_mode else ". Please check the number in Edit Records, or inform Party 1 by phone."))
+    if failed:
+        parts.append("Could not send WhatsApp to " + "; ".join(failed) + ".")
+    status = ("failed" if failed else "not_on_whatsapp" if not_on_wa else "queued" if queued else "sent")
+    return status, prefix + " ".join(parts)
+
+
+def test_recipients(p1_cfg: dict) -> list:
+    """Test-mode recipients as [(name, number-to-send-to)].
+    Reads test_recipients; older configs with a single test_mobile still work."""
+    out = []
+    for r in p1_cfg.get("test_recipients") or []:
+        number = phone_utils.join(r.get("country_code"), r.get("mobile"))
+        if number:
+            out.append((str(r.get("name") or "Test").strip() or "Test", number))
+    if not out and p1_cfg.get("test_mobile"):
+        out.append(("Test", phone_utils.join(p1_cfg.get("test_country_code"), p1_cfg.get("test_mobile"))))
+    return out
 
 
 def notify_new_entry(record: dict):

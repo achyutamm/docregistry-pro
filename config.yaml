@@ -91,15 +91,22 @@ party1_checklist:
     Namaste {party_name_1},
 
     Your *{doc_type}* registration appointment is on *{appointment_date}* at *{appointment_time}* at *{sro}*.
+    Party 2: *{party_name_2}*
 
     Please bring the following documents:
     {checklist}
     {partners}
     If you need any more information regarding this, you can reach out to us on {contact_numbers} during our business hours.
 
-    - {company}
-  test_mobile: '8980892103'
+    -{company}
   test_mode: true
+  test_recipients:
+  - country_code: '+91'
+    mobile: '8980892103'
+    name: Akhil
+  - country_code: '+91'
+    mobile: '7600433220'
+    name: Parag
 party_name_2_options:
 - NCB NARODA
 - NCB NANA CHILODA
@@ -191,8 +198,12 @@ users:
 whatsapp:
   baileys_api_url: https://docregistry-pro-production.up.railway.app
   contact_numbers:
-  - '9824551099'
-  - '8980892103'
+  - name: Akhil Gohil
+    number: '8980892103'
+    title: Advocate
+  - name: Parag Mehta
+    number: '7600433220'
+    title: Advocate
   enabled: true
   from_number: '+14155238886'
   group_id: 120363409369498081@g.us

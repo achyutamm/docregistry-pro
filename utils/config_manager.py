@@ -163,37 +163,68 @@ def set_party1_checklist_enabled(value: bool):
     save_config(cfg)
 
 
-def set_whatsapp_contact_numbers(numbers):
-    """Office numbers printed in messages ({contact_numbers}), in the given order."""
-    cleaned = []
-    for raw in numbers or []:
-        n = " ".join(str(raw or "").split())
+def set_whatsapp_contact_numbers(contacts):
+    """Office contacts printed in messages ({contact_numbers}), in the given order.
+    contacts: [{"title", "name", "number"}] (a plain number string is also accepted)."""
+    def _text(v):   # table cells can arrive as None / NaN for empty
+        s = " ".join(str(v if v is not None else "").split())
+        return "" if s.lower() in ("nan", "none") else s
+
+    cleaned, seen = [], set()
+    for row, raw in enumerate(contacts or [], start=1):
+        c = raw if isinstance(raw, dict) else {"number": raw}
+        title, name, n = _text(c.get("title")), _text(c.get("name")), _text(c.get("number"))
         if not n:
+            if name:
+                raise ValueError(f"Row {row}: enter a contact number for {name}.")
             continue
         digits = "".join(ch for ch in n if ch.isdigit())
         if not re.fullmatch(r"\+?[\d ]+", n) or not 6 <= len(digits) <= 15:
-            raise ValueError(f"'{n}' is not a valid phone number (digits, optional + and spaces).")
-        if n not in cleaned:
-            cleaned.append(n)
+            raise ValueError(f"Row {row}: '{n}' is not a valid phone number (digits, optional + and spaces).")
+        if n in seen:
+            raise ValueError(f"Row {row}: {n} is listed twice.")
+        seen.add(n)
+        cleaned.append({"title": title, "name": name, "number": n})
     cfg = load_config()
     cfg.setdefault("whatsapp", {})["contact_numbers"] = cleaned
     save_config(cfg)
 
 
-def set_party1_checklist_test_mode(enabled: bool, test_mobile: str, country_code: str = "+91"):
-    """Test mode sends every checklist to the test number instead of Party 1's own number."""
+def set_party1_checklist_test_mode(enabled: bool, recipients):
+    """Test mode sends every checklist to these people instead of Party 1.
+    recipients: [{"name", "country_code", "mobile"}]; blank rows are ignored."""
     from utils import phone_utils
-    test_mobile = str(test_mobile or "").strip()
-    if enabled and not test_mobile:
-        raise ValueError("Enter a test mobile number to turn test mode on.")
-    error = phone_utils.validate(country_code, test_mobile)
-    if error:
-        raise ValueError(error)
+    def _text(v):   # table cells can arrive as None / NaN for empty
+        s = " ".join(str(v if v is not None else "").split())
+        return "" if s.lower() in ("nan", "none") else s
+
+    cleaned, seen = [], set()
+    for n, r in enumerate(recipients or [], start=1):
+        name = _text(r.get("name"))
+        code = _text(r.get("country_code")) or phone_utils.DEFAULT_CODE
+        mobile = _text(r.get("mobile"))
+        if not name and not mobile:
+            continue
+        if not name:
+            raise ValueError(f"Row {n}: enter the person's name for {mobile}.")
+        if not mobile:
+            raise ValueError(f"Row {n}: enter a mobile number for {name}.")
+        error = phone_utils.validate(code, mobile)
+        if error:
+            raise ValueError(f"Row {n} ({name}): {error}")
+        key = phone_utils.join(code, mobile)
+        if key in seen:
+            raise ValueError(f"Row {n} ({name}): {code} {mobile} is listed twice.")
+        seen.add(key)
+        cleaned.append({"name": name, "country_code": phone_utils.clean_code(code), "mobile": mobile})
+    if enabled and not cleaned:
+        raise ValueError("Add at least one test recipient (name + mobile) to turn test mode on.")
     cfg = load_config()
     p1 = cfg.setdefault("party1_checklist", {})
     p1["test_mode"] = bool(enabled)
-    p1["test_country_code"] = phone_utils.clean_code(country_code)
-    p1["test_mobile"] = test_mobile
+    p1["test_recipients"] = cleaned
+    p1.pop("test_mobile", None)          # replaced by test_recipients
+    p1.pop("test_country_code", None)
     save_config(cfg)
 
 
