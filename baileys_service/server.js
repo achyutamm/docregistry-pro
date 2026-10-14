@@ -7,6 +7,8 @@ import express from 'express'
 import qrcode from 'qrcode-terminal'
 import QRCode from 'qrcode'
 import pino from 'pino'
+import fs from 'fs'
+import path from 'path'
 
 const logger = pino({ level: 'silent' })
 const app = express()
@@ -30,6 +32,14 @@ app.use((req, res, next) => {
 let sock = null
 let isConnected = false
 let lastQR = null
+
+// Delete the files INSIDE AUTH_DIR (not the folder itself — on Railway it is a mounted volume)
+function clearAuthDir() {
+    if (!fs.existsSync(AUTH_DIR)) return
+    for (const name of fs.readdirSync(AUTH_DIR)) {
+        fs.rmSync(path.join(AUTH_DIR, name), { recursive: true, force: true })
+    }
+}
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
@@ -69,7 +79,12 @@ async function connectToWhatsApp() {
                 console.log('🔄 Connection lost, reconnecting...')
                 connectToWhatsApp()
             } else {
-                console.log('❌ Logged out. Clear AUTH_DIR and restart to re-scan QR.')
+                // Logged out from the phone (Linked devices → Log out): the saved session is
+                // now useless, so wipe it and start fresh — /qr then shows a new QR to scan.
+                console.log('❌ Logged out from the phone. Clearing the saved session and showing a new QR code...')
+                clearAuthDir()
+                lastQR = null
+                setTimeout(connectToWhatsApp, 2000)
             }
         }
     })
