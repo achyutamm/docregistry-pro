@@ -1,6 +1,3 @@
-# DEV settings — used only by the local dev app (run_dev.bat sets DOCREGISTRY_CONFIG=config.dev.yaml).
-# Points at the dev Google Sheet, the local dev WhatsApp sender and the dev WhatsApp group.
-# Production (Streamlit Cloud / GitHub Actions) never reads this file.
 app:
   company: BK Mehta & Associates
   name: DocRegistry Pro
@@ -35,7 +32,7 @@ google:
       sheet_id: 125SVBTF0LPfi0cYXbNp0Gut_DRI-bOLnqSP4qQdcK_A
     dev:
       credentials: credentials/docregistry-credentials_bk.json.json
-      sheet_id: PASTE_DEV_SHEET_ID_HERE
+      sheet_id: 1XrykAL35K9j9srtttKvNxMNayAwGyBp_qTxy7BQlHXs
   active_account: dev
 party1_checklist:
   default_items:
@@ -106,7 +103,10 @@ party1_checklist:
 
     -{company}
   test_mode: true
-  test_recipients: []
+  test_recipients:
+  - country_code: '+91'
+    mobile: '7385240499'
+    name: Dev Test
 party_name_2_options:
 - NCB NARODA
 - NCB NANA CHILODA
@@ -196,7 +196,7 @@ users:
     password: pbkdf2_sha256$260000$0268dfb3b11a645eafd33b322a8cf409$c1f7c87f81a6cb53ceea6fa511952debd130c3f9346492d97d1a1e07cdeba897
     role: admin
 whatsapp:
-  baileys_api_url: http://localhost:3001
+  baileys_api_url: https://docregistry-pro-production.up.railway.app
   contact_numbers:
   - name: Akhil Gohil
     number: '8980892103'

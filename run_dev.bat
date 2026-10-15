@@ -1,9 +1,9 @@
 @echo off
 REM ============================================================
 REM  DocRegistry Pro - start the DEV app at http://localhost:8510
-REM  Double-click this file. Keep the black windows open while you
-REM  use the app; close them (or press Ctrl+C) to stop the dev app and
-REM  the DEV WhatsApp sender. Uses config.dev.yaml (never the live sheet).
+REM  Double-click this file. Keep the black window open while you
+REM  use the app; close it (or press Ctrl+C) to stop the dev app.
+REM  Uses config.dev.yaml (DEV sheet, DEV test recipient, DEV group).
 REM ============================================================
 title DocRegistry Pro - DEV (localhost:8510)
 cd /d "%~dp0"
@@ -37,14 +37,9 @@ REM Use the DEV settings: dev Google Sheet, dev WhatsApp sender, dev group, dev 
 set DOCREGISTRY_CONFIG=config.dev.yaml
 echo  Settings   : config.dev.yaml (DEV sheet + DEV WhatsApp)
 
-REM Start the DEV WhatsApp sender in its own window (its own login: baileys_service/auth_info_dev)
-netstat -ano | findstr /R /C:":3001 .*LISTENING" >nul
-if errorlevel 1 (
-    echo  Starting the DEV WhatsApp sender on http://localhost:3001 ...
-    start "DocRegistry DEV WhatsApp (localhost:3001)" cmd /k "cd /d "%~dp0baileys_service" && set AUTH_DIR=auth_info_dev&& set PORT=3001&& node server.js"
-) else (
-    echo  DEV WhatsApp sender already running on http://localhost:3001
-)
+REM DEV messages are sent from the office number through the production WhatsApp
+REM service, but only to the DEV test recipient and the DEV group (config.dev.yaml).
+echo  WhatsApp   : office number -^> DEV test recipient + DEV group only
 echo.
 
 REM Open the browser once the server has had time to start
