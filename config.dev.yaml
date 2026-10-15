@@ -1,0 +1,214 @@
+# DEV settings — used only by the local dev app (run_dev.bat sets DOCREGISTRY_CONFIG=config.dev.yaml).
+# Points at the dev Google Sheet, the local dev WhatsApp sender and the dev WhatsApp group.
+# Production (Streamlit Cloud / GitHub Actions) never reads this file.
+app:
+  company: BK Mehta & Associates
+  name: DocRegistry Pro
+  tagline: Advocate Office Registry Management System
+  version: v1.0
+document_types:
+- Sale Deed
+- Lease Agreement
+- Gift Deed
+- Mortgage
+- Power of Attorney
+- Hak-Kami (Dispose of rights)
+- Release
+- Rent Agreement
+- Agreement of Sale (Banakhat)
+duplicate_check:
+  enabled: true
+  fields:
+  - Garvi_Application_ID
+  mode: AND
+email:
+  admin_emails:
+  - bkmehta.associate@gmail.com
+  - achyutam.mehta@gmail.com
+google:
+  accounts:
+    bk:
+      credentials: credentials/docregistry-credentials_bk.json.json
+      sheet_id: 1zNawbVGBhRvOE2aFFnYO7GuM0J2lyccARvNmAoGDeU4
+    default:
+      credentials: credentials/docregistry-credentials.json
+      sheet_id: 125SVBTF0LPfi0cYXbNp0Gut_DRI-bOLnqSP4qQdcK_A
+    dev:
+      credentials: credentials/docregistry-credentials_bk.json.json
+      sheet_id: PASTE_DEV_SHEET_ID_HERE
+  active_account: dev
+party1_checklist:
+  default_items:
+  - Receivable - 1 passport size photo
+  - Receivable - Aadhaar card
+  - Payable - 1 passport size photo
+  - Payable - Aadhaar card
+  enabled: true
+  items:
+    Agreement of Sale (Banakhat):
+    - Receivable (Lenar)- 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar)- 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    - Witness 1 and Witness 2 (Sakshi) - Aadhar Card and PAN Card
+    Gift Deed:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Hak-Kami (Dispose of rights):
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    - Witness 1 and Witness 2 (Sakshi) - Aadhar Card and PAN Card
+    - 2 photos of the property taken with the GPS Map Camera app (location visible)
+    Lease Agreement:
+    - Receivable - 1 passport size photo
+    - Receivable - Aadhaar card
+    - Payable - 1 passport size photo
+    - Payable - Aadhaar card
+    Mortgage:
+    - Party -  Passport size photo
+    - Aadhaar Card and PAN Card
+    - Witness 1 (Sakshi) - Aadhar Card and Passport  Photo
+    - Witness 2 (Sakshi) - Aadhar Card and  Passport  Photo
+    Power of Attorney:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable (Lenar) - Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Release:
+    - Party Aadhaar card and PAN Card
+    - Witness 1 (Sakshi) - Aadhar Card
+    - Witness 2 (Sakshi) - Aadhaar card
+    Rent Agreement:
+    - Receivable (Lenar) - 1 passport size photo
+    - Receivable  (Lenar)- Aadhaar card
+    - Payable (Apnar) - 1 passport size photo
+    - Payable (Apnar) - Aadhaar card
+    Sale Deed:
+    - 2 photos of the property taken with the GPS Map Camera app (location visible)
+    - Receivable - 1 passport size photo
+    - Receivable - Aadhaar card
+    - Payable - 1 passport size photo
+    - Payable - Aadhaar card
+  message: |-
+    Namaste {party_name_1},
+
+    Your *{doc_type}* registration appointment is on *{appointment_date}* at *{appointment_time}* at *{sro}*.
+    Party 2: *{party_name_2}*
+
+    Please bring the following documents:
+    {checklist}
+    {partners}
+    If you need any more information regarding this, you can reach out to us on {contact_numbers} during our business hours.
+
+    -{company}
+  test_mode: true
+  test_recipients: []
+party_name_2_options:
+- NCB NARODA
+- NCB NANA CHILODA
+- NCB NAVRANGPURA
+- NCB NARANPURA
+- NCB DARIYAPUR
+- NCB RAKHIYAL
+- NCB SOLA
+- NCB RANIP
+- NCB KATHWADA
+- NCB MEGHANINAGAR
+- NCB SABARMATI
+- NCB KOBA
+- NCB SATELLITE
+- NCB NAVA NARODA
+- Vijay Co-oprative Bank (VCB)
+- Amdvad Distrcit Co-oprative Bank (ADC)
+session:
+  cookie_name: docregistry_session
+  idle_timeout_minutes: 30
+sro_options:
+  Ahmedabad:
+  - Ahmedabad- 1 City
+  - Ahmedabad- 2 Vadaj
+  - Ahmedabad- 3 Memnagar
+  - Ahmedabad- 4 Paldi
+  - Ahmedabad- 5 Narol
+  - Ahmedabad- 6 Naroda
+  - Ahmedabad- 7 Odhav
+  - Ahmedabad- 8 Sola
+  - Ahmedabad- 9 Bopal
+  - Ahmedabad- 10 Vejalpur
+  - Ahmedabad- 11 Aslali
+  - Ahmedabad- 12 Nikol
+  - Ahmedabad- 13 Sabarmati
+  - Ahmedabad- 13 City Agriculture
+  - Ahmedabad- 14 Vastral
+  - Ahmedabad- 14 Dascroi Agriculture
+  - S.R.O.- Sanand
+  - S.R.O.- Viramgam
+  - S.R.O.- Dholka
+  - S.R.O.-Dhandhuka
+  - S.R.O.- Bavla
+  - S.R.O.- Mandal
+  - S.R.O.- Detroj
+  - S.R.O.- Dholera
+  - S.R.O Kathwada
+  Gandhinagar:
+  - Gandhinagar Zone- 1
+  - Gandhinagar Zone- 2
+  - Gandhinagar Zone- 3
+  - S.R.O- Dehgam
+  - S.R.O- Mansa
+  - S.R.O- Kalol
+  Mahesana:
+  - S.R.O.- Kheralu
+  - S.R.O.- Kadi
+  - S.R.O.- Visnagar
+  - S.R.O.- Unjha
+  - S.R.O.- Vijapur
+  - S.R.O.- Mahesana
+  - S.R.O.- Satlasan
+  - S.R.O.- Becharaji
+  - S.R.O.- Vadnagar
+  - S.R.O.- Jotana
+telegram:
+  enabled: false
+users:
+  AKHIL G:
+    config_access: false
+    name: AKHIL GOHIL
+    password: pbkdf2_sha256$260000$2dd07dfb41db05706aced8162cc1f3b1$a8ebfa2f7225736eb121aed041a49f2ad9b0257d9e92a0f15c16bf9310930c56
+    role: staff
+  Parag:
+    config_access: true
+    name: Parag Mehta
+    password: pbkdf2_sha256$260000$a54ce9b50f0f8d7ffec02f3092d7a3fa$8f7415b82104d5c7881cad468d3a26911febfc3f59fdc8ae96e65e565827ba3f
+    role: staff
+  achyutam:
+    config_access: false
+    name: Achyutam Mehta
+    password: pbkdf2_sha256$260000$ebf35973aeb935bb5771b612bab983d3$e529516db2bcf5e93f0c64282f3eeb3e80b7bd141fe564b4e457da50a7a3b787
+    role: staff
+  admin:
+    config_access: true
+    name: Admin User
+    password: pbkdf2_sha256$260000$0268dfb3b11a645eafd33b322a8cf409$c1f7c87f81a6cb53ceea6fa511952debd130c3f9346492d97d1a1e07cdeba897
+    role: admin
+whatsapp:
+  baileys_api_url: http://localhost:3001
+  contact_numbers:
+  - name: Akhil Gohil
+    number: '8980892103'
+    title: Advocate
+  - name: Parag Mehta
+    number: '7600433220'
+    title: Advocate
+  enabled: true
+  from_number: '+14155238886'
+  group_id: ''
+  mode: sandbox
+  production_number: '+17017655675'
+  provider: baileys
+  recipient_numbers:
+  - '+919824551099'

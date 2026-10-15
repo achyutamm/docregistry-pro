@@ -30,3 +30,4 @@ Thumbs.db
 baileys_service/auth_info_baileys/
 baileys_service/auth_info_local_test/
 baileys_service/node_modules/
+baileys_service/auth_info_dev/

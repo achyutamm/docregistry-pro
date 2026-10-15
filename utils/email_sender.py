@@ -4,12 +4,13 @@ import yaml
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+from utils.app_env import CONFIG_FILE
 
 load_dotenv()
 
 def _branding():
     try:
-        with open("config.yaml", "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         app = cfg.get("app", {})
         return {

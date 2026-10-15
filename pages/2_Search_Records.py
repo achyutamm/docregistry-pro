@@ -7,6 +7,7 @@ from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_h
 from utils.date_utils import parse_appt_date_series
 import pandas as pd
 import yaml
+from utils.app_env import CONFIG_FILE
 
 # ============================================
 # PAGE CONFIG
@@ -37,7 +38,7 @@ user_info = st.session_state.get('user_info', {})
 # ============================================
 # LOAD CONFIG
 # ============================================
-with open("config.yaml", "r") as f:
+with open(CONFIG_FILE, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 DOCUMENT_TYPES       = config.get("document_types", [])

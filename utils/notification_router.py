@@ -5,11 +5,12 @@ based on telegram.enabled and whatsapp.enabled in config.yaml.
 Switch providers by toggling enabled: true/false in config.yaml — no code changes needed.
 """
 import yaml
+from utils.app_env import CONFIG_FILE
 
 
 def _cfg() -> dict:
     try:
-        with open("config.yaml", "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except Exception:
         return {}

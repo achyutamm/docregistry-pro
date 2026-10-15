@@ -130,6 +130,23 @@ app.get('/qr', async (req, res) => {
     }
 })
 
+// List the groups this WhatsApp number is in, with their IDs (to set whatsapp.group_id).
+// Protected by the API key like the send endpoints.
+app.get('/groups', async (req, res) => {
+    if (!isConnected) {
+        return res.status(503).json({ success: false, error: 'WhatsApp not connected. Check /status or /qr.' })
+    }
+    try {
+        const groups = await sock.groupFetchAllParticipating()
+        res.json({
+            success: true,
+            groups: Object.values(groups).map(g => ({ id: g.id, name: g.subject, members: g.participants?.length || 0 }))
+        })
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message })
+    }
+})
+
 // Send message to WhatsApp group
 app.post('/send', async (req, res) => {
     const { group_id, message } = req.body

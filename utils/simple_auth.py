@@ -11,10 +11,11 @@ import streamlit as st
 import yaml
 from datetime import datetime, timedelta
 from utils.password_utils import hash_password, verify_password, is_hashed
+from utils.app_env import CONFIG_FILE
 
 
 class SimpleAuth:
-    def __init__(self, config_file='config.yaml', cookie_manager=None, sheets_manager=None):
+    def __init__(self, config_file=CONFIG_FILE, cookie_manager=None, sheets_manager=None):
         with open(config_file, 'r') as f:
             self.config = yaml.safe_load(f)
         self._sm            = sheets_manager
@@ -76,7 +77,7 @@ class SimpleAuth:
                 return
             except Exception:
                 pass
-        with open('config.yaml', 'r') as f:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             cfg = yaml.safe_load(f)
         self.users = cfg.get('users', {})
 
@@ -174,7 +175,7 @@ class SimpleAuth:
     def username_exists(self, username):
         return username in self.users
 
-    def add_user_to_config(self, username, password, name, role, config_access=False, config_file="config.yaml"):
+    def add_user_to_config(self, username, password, name, role, config_access=False, config_file=CONFIG_FILE):
         hashed = hash_password(password)
         if self._sm:
             self._sm.add_user_to_sheet(username, hashed, name, role, config_access)
@@ -193,7 +194,7 @@ class SimpleAuth:
             self.users = cfg["users"]
         return True
 
-    def set_user_config_access(self, username, value: bool, config_file="config.yaml"):
+    def set_user_config_access(self, username, value: bool, config_file=CONFIG_FILE):
         if self._sm:
             self._sm.update_user_config_access_sheet(username, value)
             self._reload_users()
@@ -210,7 +211,7 @@ class SimpleAuth:
             st.session_state.user_info = self.users.get(username, {})
         return True
 
-    def set_user_password(self, username, new_password, config_file="config.yaml"):
+    def set_user_password(self, username, new_password, config_file=CONFIG_FILE):
         hashed = hash_password(new_password)
         if self._sm:
             self._sm.update_user_password_sheet(username, hashed)
@@ -228,7 +229,7 @@ class SimpleAuth:
             st.session_state.user_info = self.users.get(username, {})
         return True
 
-    def set_user_role(self, username, new_role: str, config_file="config.yaml"):
+    def set_user_role(self, username, new_role: str, config_file=CONFIG_FILE):
         if self._sm:
             self._sm.update_user_role_sheet(username, new_role.lower())
             self._reload_users()
@@ -245,7 +246,7 @@ class SimpleAuth:
             st.session_state.user_info = self.users.get(username, {})
         return True
 
-    def remove_user_from_config(self, username, config_file="config.yaml"):
+    def remove_user_from_config(self, username, config_file=CONFIG_FILE):
         if self._sm:
             self._sm.delete_user_from_sheet(username)
             self._reload_users()

@@ -3,6 +3,7 @@ import requests
 import yaml
 from datetime import datetime
 from dotenv import load_dotenv
+from utils.app_env import CONFIG_FILE
 
 load_dotenv()
 
@@ -16,7 +17,7 @@ def _telegram_config():
 
 def _enabled() -> bool:
     try:
-        with open("config.yaml", "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         return bool(cfg.get("telegram", {}).get("enabled", True))
     except Exception:
