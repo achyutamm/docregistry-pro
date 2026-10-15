@@ -206,7 +206,7 @@ whatsapp:
     title: Advocate
   enabled: true
   from_number: '+14155238886'
-  group_id: ''
+  group_id: 120363412143390729@g.us
   mode: sandbox
   production_number: '+17017655675'
   provider: baileys
