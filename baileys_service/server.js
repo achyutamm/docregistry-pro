@@ -2,7 +2,7 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion
-} from '@whiskeysockets/baileys'
+} from 'baileys'
 import express from 'express'
 import qrcode from 'qrcode-terminal'
 import QRCode from 'qrcode'
@@ -33,6 +33,22 @@ let sock = null
 let isConnected = false
 let lastQR = null
 
+// Reconnect backoff: 1s, 2s, 4s … capped at 60s; reset once connected.
+const RECONNECT_MIN_MS = 1000
+const RECONNECT_MAX_MS = 60000
+let reconnectDelay = RECONNECT_MIN_MS
+let reconnectTimer = null
+
+function scheduleReconnect(reason) {
+    if (reconnectTimer) return                    // one pending reconnect at a time
+    console.log(`🔄 Connection lost (${reason}), reconnecting in ${reconnectDelay / 1000}s...`)
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        connectToWhatsApp()
+    }, reconnectDelay)
+    reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS)
+}
+
 // Delete the files INSIDE AUTH_DIR (not the folder itself — on Railway it is a mounted volume)
 function clearAuthDir() {
     if (!fs.existsSync(AUTH_DIR)) return
@@ -45,17 +61,21 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
     const { version } = await fetchLatestBaileysVersion()
 
-    sock = makeWASocket({
+    const thisSock = makeWASocket({
         version,
         auth: state,
         logger,
         printQRInTerminal: false,
         browser: ['DocRegistry Pro', 'Chrome', '1.0.0']
     })
+    sock = thisSock
 
-    sock.ev.on('creds.update', saveCreds)
+    thisSock.ev.on('creds.update', saveCreds)
 
-    sock.ev.on('connection.update', (update) => {
+    thisSock.ev.on('connection.update', (update) => {
+        // Ignore late events from a previous connection — otherwise every old socket
+        // that reports "close" starts yet another reconnect (a reconnect storm).
+        if (thisSock !== sock) return
         const { connection, lastDisconnect, qr } = update
 
         if (qr) {
@@ -68,6 +88,7 @@ async function connectToWhatsApp() {
         if (connection === 'open') {
             isConnected = true
             lastQR = null
+            reconnectDelay = RECONNECT_MIN_MS
             console.log('✅ WhatsApp connected successfully!')
         }
 
@@ -76,8 +97,7 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut
             if (shouldReconnect) {
-                console.log('🔄 Connection lost, reconnecting...')
-                connectToWhatsApp()
+                scheduleReconnect(`status ${statusCode ?? 'unknown'}`)
             } else {
                 // Logged out from the phone (Linked devices → Log out): the saved session is
                 // now useless, so wipe it and start fresh — /qr then shows a new QR to scan.
