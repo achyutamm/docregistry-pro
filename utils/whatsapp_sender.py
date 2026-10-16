@@ -6,13 +6,14 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from utils import phone_utils
+from utils.app_env import CONFIG_FILE
 
 load_dotenv()
 
 
 def _full_config() -> dict:
     try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except Exception:
         return {}

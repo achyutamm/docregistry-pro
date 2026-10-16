@@ -50,6 +50,7 @@ from utils.sheets_manager import number_lines
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
+from utils.app_env import CONFIG_FILE, IS_DEV
 
 # =====================================================
 # PAGE CONFIG — must be the very first st call
@@ -110,7 +111,7 @@ st.markdown("""
 # =====================================================
 # LOAD CONFIG
 # =====================================================
-with open("config.yaml", "r") as f:
+with open(CONFIG_FILE, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 DOCUMENT_TYPES       = config.get("document_types", [])
@@ -123,7 +124,7 @@ STATUS_OPTIONS       = ["Pending", "In Progress", "Completed", "Rejected"]
 # =====================================================
 # AUTH
 # =====================================================
-auth = SimpleAuth("config.yaml", cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=2))
+auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=2))
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
@@ -283,6 +284,8 @@ username  = st.session_state.username
 # SIDEBAR — NAVIGATION
 # =====================================================
 st.sidebar.title("🏠 DocRegistry Pro")
+if IS_DEV:
+    st.sidebar.warning("🧪 **DEV environment** — dev Google Sheet and dev WhatsApp only. Nothing here reaches live data or real clients.")
 st.sidebar.markdown(f"👋 **{user_info['name']}**")
 st.sidebar.markdown(f"Role: **{user_info['role'].title()}**")
 
@@ -1524,7 +1527,7 @@ elif page == "👥 User Management":
         if hasattr(_au_sm, 'get_all_users'):
             active_users = _au_sm.get_all_users()
         else:
-            with open("config.yaml", "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 _cfg = yaml.safe_load(f)
             active_users = _cfg.get("users", {})
 

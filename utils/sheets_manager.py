@@ -9,6 +9,7 @@ import time
 from dotenv import load_dotenv
 
 from utils.date_utils import parse_appt_date, parse_appt_date_series
+from utils.app_env import CONFIG_FILE, IS_DEV
 
 load_dotenv()
 
@@ -34,17 +35,22 @@ def number_lines(text) -> str:
 def _load_google_config():
     """Read active credentials path and sheet ID from config.yaml."""
     try:
-        with open("config.yaml", "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         google_cfg  = cfg.get("google", {})
         active      = google_cfg.get("active_account", "default")
         account_cfg = google_cfg.get("accounts", {}).get(active, {})
         cred_path   = account_cfg.get("credentials") or os.getenv("GOOGLE_CREDENTIALS_PATH")
-        sheet_id    = account_cfg.get("sheet_id")    or os.getenv("GOOGLE_SHEET_ID")
-        return cred_path, sheet_id, active
+        sheet_id    = account_cfg.get("sheet_id")    or ("" if IS_DEV else os.getenv("GOOGLE_SHEET_ID"))
     except Exception:
+        if IS_DEV:   # never fall back to the .env (live) sheet from the dev app
+            raise
         # Fallback to .env if config.yaml is unavailable
         return os.getenv("GOOGLE_CREDENTIALS_PATH"), os.getenv("GOOGLE_SHEET_ID"), "default"
+    if IS_DEV and (not sheet_id or str(sheet_id).startswith("PASTE_")):
+        raise RuntimeError(f"DEV: set the dev Google Sheet ID in {CONFIG_FILE} "
+                           f"(google.accounts.{active}.sheet_id) before starting the dev app.")
+    return cred_path, sheet_id, active
 
 class SheetsManager:
 

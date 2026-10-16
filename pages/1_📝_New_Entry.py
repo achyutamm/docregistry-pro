@@ -14,6 +14,7 @@ from utils import phone_utils
 from datetime import datetime, date, time
 import pandas as pd
 import yaml
+from utils.app_env import CONFIG_FILE, IS_DEV
 
 # ============================================
 # PAGE CONFIG
@@ -34,7 +35,7 @@ st.markdown("""
 # ============================================
 # LOAD CONFIG
 # ============================================
-with open("config.yaml", "r") as f:
+with open(CONFIG_FILE, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 party_name_2_options = config.get("party_name_2_options", [])
@@ -55,6 +56,8 @@ user_info = st.session_state.get('user_info', {})
 # ============================================
 with st.sidebar:
     st.title("🏛️ DocRegistry Pro")
+    if IS_DEV:
+        st.warning("🧪 **DEV environment** — dev Google Sheet and dev WhatsApp only. Nothing here reaches live data or real clients.")
     st.markdown(f"👋 **{user_info.get('name', username)}**")
     st.markdown(f"Role: **{user_info.get('role', '').title()}**")
     st.divider()

@@ -8,7 +8,7 @@ and the Telegram toggle without hand-editing YAML.
 import re
 import yaml
 
-CONFIG_FILE = "config.yaml"
+from utils.app_env import CONFIG_FILE  # config.yaml, or config.dev.yaml in dev
 
 
 def load_config():

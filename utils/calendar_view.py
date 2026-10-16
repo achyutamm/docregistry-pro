@@ -103,6 +103,8 @@ def _cell(row, col) -> str:
 def _prepare(df: pd.DataFrame) -> pd.DataFrame:
     """Add parsed date/time helper columns and drop rows without a valid Appointment Date."""
     out = df.copy()
+    if "Appointment Date" not in out.columns:   # sheet has no records yet (no columns at all)
+        return pd.DataFrame(columns=list(out.columns) + ["Appointment Date", "_appt_date", "_mins"])
     out["_appt_date"] = parse_appt_date_series(out["Appointment Date"]).dt.date
     out["_mins"]      = out["Appointment Time"].map(_time_minutes) if "Appointment Time" in out else _NO_TIME
     out = out[out["_appt_date"].notna()]
