@@ -16,7 +16,7 @@ import sys
 import time
 import pandas as pd
 
-from utils.sheets_manager import SheetsManager
+from utils.sheets_manager import SheetsManager, is_tentative
 from utils.notification_router import notify_pending_records_alert
 
 MAX_RETRIES = 3
@@ -29,7 +29,11 @@ def run():
     sm = SheetsManager()
     df = sm.get_all_records()
 
-    pending_all = df[df["Title_Status"].str.lower() == "pending"].copy()
+    pending = df["Title_Status"].str.lower() == "pending"
+    # Tentative appointments (placeholder date) are not real pending work yet
+    if "Appointment_Status" in df.columns:
+        pending &= ~df["Appointment_Status"].map(is_tentative)
+    pending_all = df[pending].copy()
     if pending_all.empty:
         print("No records are currently in Pending status. Nothing to send.")
         return

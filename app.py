@@ -464,9 +464,10 @@ if page == "🏠 Dashboard":
     # =========================================================
     st.divider()
     st.subheader("⚠️ Pending Records Alert")
-    st.caption("All records currently in Pending status, sorted by oldest first.")
+    st.caption("All confirmed records currently in Pending status, sorted by oldest first "
+               "(tentative appointments are listed separately above).")
 
-    pending_all = df[df["Title_Status"].str.lower() == "pending"].copy()
+    pending_all = df[(df["Title_Status"].str.lower() == "pending") & ~_tent_mask].copy()
     pending_all["Entry_Date_dt"] = pd.to_datetime(pending_all["Entry_Date"], errors="coerce")
     today_ts = pd.Timestamp.today().normalize()
     pending_all["Days Pending"] = (today_ts - pending_all["Entry_Date_dt"]).dt.days
