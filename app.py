@@ -328,6 +328,9 @@ if page == "🏠 Dashboard":
     _appt_parsed = parse_appt_date_series(df["Appointment Date"])
 
     _today_ts = pd.Timestamp(date.today())
+    # Tentative = placeholder date, not a real appointment yet
+    _tent_mask = (df["Appointment_Status"].map(is_tentative) if "Appointment_Status" in df.columns
+                  else pd.Series(False, index=df.index))
 
     # Today's Appointments
     st.divider()
@@ -353,9 +356,11 @@ if page == "🏠 Dashboard":
     with col1:
         st.subheader("📆 Upcoming Appointments (Next 7 Days)")
     with col2:
+        # Only real (confirmed) appointments; tentative ones have their own list below
         upcoming_df = df[
             (_appt_parsed > _today_ts) &
-            (_appt_parsed <= (_today_ts + timedelta(days=7)))
+            (_appt_parsed <= (_today_ts + timedelta(days=7))) &
+            ~_tent_mask
         ]
         st.download_button("⬇️", upcoming_df.to_csv(index=False),
                            file_name="upcoming_appointments_7_days.csv",
@@ -371,8 +376,6 @@ if page == "🏠 Dashboard":
         st.info("No upcoming appointments in the next 7 days.")
 
     # Tentative appointments — placeholder dates still waiting for the real one
-    _tent_mask = (df["Appointment_Status"].map(is_tentative) if "Appointment_Status" in df.columns
-                  else pd.Series(False, index=df.index))
     if _tent_mask.any():
         st.divider()
         st.subheader(f"⏳ Tentative Appointments to Confirm ({int(_tent_mask.sum())})")
