@@ -13,6 +13,11 @@ from utils.app_env import CONFIG_FILE, IS_DEV
 
 load_dotenv()
 
+def is_tentative(status) -> bool:
+    """Appointment_Status says the date is only a placeholder. Blank (older rows) = Confirmed."""
+    return str(status or "").strip().lower() == "tentative"
+
+
 def clean_lines(text) -> str:
     """Multi-line text box → one trimmed entry per line, blank lines dropped
     (e.g. the Party 1 Partners box: one partner name per line)."""
@@ -137,6 +142,7 @@ class SheetsManager:
             "Entry_Time",
             "Remark",
             "Party_Name 1 Partners",   # other Party 1 names (partners), one per line
+            "Appointment_Status",      # "Confirmed" or "Tentative" (placeholder date); blank = Confirmed
         ]
 
         # Auto-create headers in Sheet1 if it is empty (must be after self.headers is set)
@@ -235,7 +241,8 @@ class SheetsManager:
         entry_date,
         entry_time,
         remark="",
-        party1_partners=""
+        party1_partners="",
+        appointment_status="Confirmed"
     ):
         entry_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -257,7 +264,8 @@ class SheetsManager:
             entry_date,
             entry_time,
             remark,
-            party1_partners
+            party1_partners,
+            appointment_status
         ]
 
         next_row = len(self.sheet.col_values(1)) + 1
@@ -292,7 +300,8 @@ class SheetsManager:
     def update_record(self, entry_id, doc_type, appointment_date, appointment_time,
                       sro, party_name_1, party1_mobile, party_name_2,
                       garvi_application_id, index_application_no, index_no,
-                      search_no, title_status, remark="", party1_partners=None):
+                      search_no, title_status, remark="", party1_partners=None,
+                      appointment_status=None):
         cell = self.sheet.find(str(entry_id), in_column=1)
         if not cell:
             return False
@@ -313,6 +322,9 @@ class SheetsManager:
         # R is Party_Name 1 Partners (col 18); None = leave as is
         if party1_partners is not None:
             self.sheet.update_cell(row, 18, party1_partners)
+        # S is Appointment_Status (col 19); None = leave as is
+        if appointment_status is not None:
+            self.sheet.update_cell(row, 19, appointment_status)
         return True
 
     # =====================================================
@@ -645,4 +657,8 @@ class SheetsManager:
         if "Appointment Date" not in df.columns:
             return df
         parsed = parse_appt_date_series(df["Appointment Date"])
-        return df[parsed.dt.date == target_date].reset_index(drop=True)
+        out = df[parsed.dt.date == target_date]
+        # Tentative appointments have a placeholder date — leave them out of reminders
+        if "Appointment_Status" in out.columns:
+            out = out[~out["Appointment_Status"].map(is_tentative)]
+        return out.reset_index(drop=True)

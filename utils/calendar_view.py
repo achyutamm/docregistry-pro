@@ -13,6 +13,7 @@ import streamlit as st
 from streamlit_calendar import calendar as fullcalendar
 
 from utils.date_utils import office_hours_minutes, parse_appt_date_series
+from utils.sheets_manager import is_tentative
 
 VIEWS = ["Month", "Week", "Day"]
 FC_VIEW = {"Month": "dayGridMonth", "Week": "timeGridWeek", "Day": "timeGridDay"}
@@ -31,6 +32,8 @@ STATUS_STYLE = {
 }
 DEFAULT_STYLE = ("#E8E8F7", "#6264A7", "#2B2D6E")
 STATUS_ICON = {"pending": "🟡", "in progress": "🔵", "completed": "🟢", "rejected": "🔴"}
+# Tentative appointments (placeholder date) are grey with a dashed look and a ⏳ prefix
+TENTATIVE_STYLE = ("#F1F1F1", "#9E9E9E", "#555555")
 
 CUSTOM_CSS = """
 .fc { font-family: "Source Sans Pro", "Segoe UI", sans-serif; font-size: 13px; }
@@ -125,10 +128,13 @@ def _to_events(appts: pd.DataFrame, view: str) -> list:
     events = []
     for idx, row in appts.iterrows():
         status = _cell(row, "Title_Status")
-        bg, border, text = STATUS_STYLE.get(status.lower(), DEFAULT_STYLE)
+        tentative = is_tentative(_cell(row, "Appointment_Status"))
+        bg, border, text = TENTATIVE_STYLE if tentative else STATUS_STYLE.get(status.lower(), DEFAULT_STYLE)
         party = _cell(row, "Party_Name 1") or "—"
         doc   = _cell(row, "Doc_Type")
         title = f"{party} · {doc}" if doc else party
+        if tentative:
+            title = f"⏳ {title} (tentative)"
         if view == "Day" and _cell(row, "SRO"):
             title += f" · {_cell(row, 'SRO')}"
 
@@ -278,7 +284,7 @@ def render_calendar(df: pd.DataFrame, username: str = "", display_fn=None):
         f"<span style='color:#888;font-size:15px'> &nbsp;·&nbsp; {len(in_range)} appointment(s)</span>",
         unsafe_allow_html=True,
     )
-    st.caption("🟡 Pending · 🔵 In Progress · 🟢 Completed · 🔴 Rejected — "
+    st.caption("🟡 Pending · 🔵 In Progress · 🟢 Completed · 🔴 Rejected · ⏳ grey = tentative date — "
                "click a day to open it, click an appointment for its details.")
 
     # --- Calendar ---

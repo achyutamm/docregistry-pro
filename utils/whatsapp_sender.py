@@ -335,12 +335,17 @@ def notify_new_entry(record: dict):
     if not _enabled():
         return
 
+    tentative = str(record.get("appointment_status", "")).strip().lower() == "tentative"
     text = (
         "📝 *New Entry — DocRegistry Pro*\n\n"
-        f"*Entry ID:* {record.get('entry_id', '')}\n"
+        + ("⏳ *TENTATIVE appointment — date not final yet.* "
+           "The Party 1 checklist will be sent once the date is confirmed.\n\n" if tentative else "")
+        + f"*Entry ID:* {record.get('entry_id', '')}\n"
         f"*Doc Type:* {record.get('doc_type', '')}\n"
-        f"*Appointment Date:* {record.get('appointment_date', '')}\n"
+        f"*Appointment Date:* {record.get('appointment_date', '')}"
+        + (" ⏳ _(tentative)_" if tentative else "") + "\n"
         f"*Appointment Time:* {record.get('appointment_time', '')}\n"
+        f"*Appointment Status:* {'⏳ Tentative' if tentative else '✅ Confirmed'}\n"
         f"*SRO:* {record.get('sro', '')}\n"
         f"*Party Name 1:* {record.get('party_name_1', '')}\n"
         f"*Party 1 Mobile:* {record.get('party1_mobile', '')}\n"
@@ -571,6 +576,8 @@ _FIELD_LABELS = {
     "Search_No":              "Search No",
     "Title_Status":           "Title Status",
     "Remark":                 "Remark",
+    "Party_Name 1 Partners":  "Party 1 Partners",
+    "Appointment_Status":     "Appointment Status",
 }
 
 
@@ -630,9 +637,16 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         change_lines.append(f"  • *{label}:* {old or '—'} → {new or '—'}")
     changes_text = "\n".join(change_lines)
 
+    # Tentative → Confirmed gets its own headline: the real date is now fixed
+    confirmed_now = any(f == "Appointment_Status" and str(new).strip().lower() == "confirmed"
+                        for f, old, new in changes)
+    tentative = str(record.get("Appointment_Status", "")).strip().lower() == "tentative"
+
     # Full record snapshot
     body = (
-        f"✏️ *Record Updated — DocRegistry Pro*\n\n"
+        (f"✅ *APPOINTMENT CONFIRMED* — {record.get('Appointment Date', '')} "
+         f"{record.get('Appointment Time', '')}\n\n" if confirmed_now else "")
+        + f"✏️ *Record Updated — DocRegistry Pro*\n\n"
         f"*Updated By:* {updated_by}\n"
         f"*Entry ID:* {entry_id}\n\n"
         f"*Changes ({len(changes)} field(s)):*\n"
@@ -650,6 +664,7 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         f"*Index No:* {record.get('Index_No', '')}  "
         f"*Search No:* {record.get('Search_No', '')}\n"
         f"*Title Status:* {record.get('Title_Status', '')}\n"
+        f"*Appointment Status:* {'⏳ Tentative' if tentative else '✅ Confirmed'}\n"
         f"*Remark:* {record.get('Remark', '') or '—'}"
     )
     try:

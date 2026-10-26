@@ -32,7 +32,7 @@ from utils.notification_router import (
     notify_new_entry, notify_today_appointments,
     notify_user_approved, notify_user_requested, notify_user_rejected,
     notify_role_changed, notify_config_access_changed, notify_user_deleted,
-    notify_record_updated,
+    notify_record_updated, send_party1_checklist,
 )
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
@@ -46,7 +46,7 @@ import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
-from utils.sheets_manager import number_lines
+from utils.sheets_manager import number_lines, is_tentative
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
@@ -83,6 +83,7 @@ COL_DISPLAY = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appt. Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -368,6 +369,22 @@ if page == "🏠 Dashboard":
         )
     else:
         st.info("No upcoming appointments in the next 7 days.")
+
+    # Tentative appointments — placeholder dates still waiting for the real one
+    _tent_mask = (df["Appointment_Status"].map(is_tentative) if "Appointment_Status" in df.columns
+                  else pd.Series(False, index=df.index))
+    if _tent_mask.any():
+        st.divider()
+        st.subheader(f"⏳ Tentative Appointments to Confirm ({int(_tent_mask.sum())})")
+        st.caption("These dates are placeholders. When the real date is fixed, open the record in "
+                   "✏️ Edit Records, set the date and change Appointment Status to Confirmed — "
+                   "that sends the Party 1 checklist. Daily reminders skip tentative entries.")
+        _tent_cols = [c for c in ["Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "SRO",
+                                  "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
+                                  "Created_By", "Entry_Date", "Remark"] if c in df.columns]
+        _tent_df = (df[_tent_mask].assign(_s=_appt_parsed[_tent_mask])
+                    .sort_values(["_s", "Appointment Time"])[_tent_cols])
+        st.dataframe(display_df(_tent_df), use_container_width=True, hide_index=True)
 
     # Record View
     st.divider()
@@ -766,7 +783,7 @@ elif page == "🔍 Search Records":
         st.info("No records match your search criteria.")
     else:
         display_cols = [
-            "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+            "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "Appointment_Status",
             "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
             "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
             "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time"
@@ -801,6 +818,7 @@ elif page == "🔍 Search Records":
                 "Inedex_Application_No": "Index App. No.", "Index_No": "Index No.",
                 "Search_No": "Search No.", "Title_Status": "Title Status",
                 "Remark": "Remark", "Party_Name 1 Partners": "Party 1 Partners",
+                "Appointment_Status": "Appointment Status",
             }
             try:
                 h_df = get_history_cached(sheets_manager, selected_entry_id)
@@ -856,6 +874,17 @@ elif page == "✏️ Edit Records":
             st.warning(msg)
         else:
             st.info(msg)
+    # Party 1 checklist sent because a Tentative appointment was just Confirmed
+    if "_edit_checklist_result" in st.session_state:
+        _cl_state, _cl_detail = st.session_state.pop("_edit_checklist_result")
+        if _cl_state == "sent":
+            st.success(f"📱 {_cl_detail}")
+        elif _cl_state == "queued":
+            st.warning(f"📥 {_cl_detail}")
+        elif _cl_state in ("not_on_whatsapp", "failed"):
+            st.error(f"⚠️ {_cl_detail}")
+        elif _cl_detail:
+            st.info(f"📱 WhatsApp to Party 1 not sent: {_cl_detail}")
 
     df = get_all_records_cached(sheets_manager)
 
@@ -878,7 +907,13 @@ elif page == "✏️ Edit Records":
         "Title_Status":           "Title Status",
         "Remark":                 "Remark",
         "Party_Name 1 Partners":  "Party 1 Partners",
+        "Appointment_Status":     "Appointment Status",
     }
+    APPT_STATUS_OPTIONS = ["Confirmed", "Tentative"]
+
+    def _appt_status(v):
+        """Sheet value → Confirmed / Tentative (blank on older rows = Confirmed)."""
+        return "Tentative" if is_tentative(v) else "Confirmed"
 
     def _norm_time(v):
         """Normalize any time representation to HH:MM:SS — handles "10:30", "10:30:00", and float fractions."""
@@ -990,11 +1025,18 @@ elif page == "✏️ Edit Records":
                     "Search_No":              str(edit_rec.get("Search_No", "")),
                     "Title_Status":           str(edit_rec.get("Title_Status", "")),
                     "Party_Name 1 Partners":  str(edit_rec.get("Party_Name 1 Partners", "") or ""),
+                    "Appointment_Status":     _appt_status(edit_rec.get("Appointment_Status", "")),
                 }
 
     if edit_rec is not None:
         party1_val = edit_rec.get("Party_Name 1", "")
         party2_val = edit_rec.get("Party_Name 2", "") or "—"
+        if is_tentative(edit_rec.get("Appointment_Status", "")):
+            st.warning(
+                "⏳ **Tentative appointment** — the date is a placeholder. Once the real date is fixed, "
+                "set it below and change **Appointment Status** to **Confirmed**: the Party 1 "
+                "checklist is sent then."
+            )
         st.success(
             f"Record loaded — "
             f"Party 1: **{party1_val}** | "
@@ -1086,7 +1128,17 @@ elif page == "✏️ Edit Records":
                 _e_time_val = time(int(t_parts[0]), int(t_parts[1]))
             except Exception:
                 _e_time_val = time(10, 0)
-            e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
+            c1, c2 = st.columns(2)
+            with c1:
+                e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
+            with c2:
+                e_appt_status = st.selectbox(
+                    "Appointment Status *", APPT_STATUS_OPTIONS,
+                    index=safe_index(APPT_STATUS_OPTIONS, _appt_status(edit_rec.get("Appointment_Status", ""))),
+                    key="e_appt_status",
+                    help="Tentative = the date is only a placeholder. Changing it to Confirmed "
+                         "sends the Party 1 checklist with the date above.",
+                )
 
             st.markdown("### 👥 Party Information")
             c1, c2 = st.columns(2)
@@ -1214,6 +1266,7 @@ elif page == "✏️ Edit Records":
                         title_status=e_status,
                         remark=e_remark.strip(),
                         party1_partners=number_lines(e_partners),
+                        appointment_status=e_appt_status,
                     )
 
                     if ok:
@@ -1238,7 +1291,11 @@ elif page == "✏️ Edit Records":
                             ("Title_Status",           _snap.get("Title_Status",           str(edit_rec.get("Title_Status", ""))),           e_status),
                             ("Remark",                 _snap.get("Remark",                 str(edit_rec.get("Remark", "") or "")),             e_remark.strip()),
                             ("Party_Name 1 Partners",  _snap.get("Party_Name 1 Partners",  str(edit_rec.get("Party_Name 1 Partners", "") or "")),  number_lines(e_partners)),
+                            ("Appointment_Status",     _snap.get("Appointment_Status",     _appt_status(edit_rec.get("Appointment_Status", ""))),  e_appt_status),
                         ]
+                        # Tentative → Confirmed: the real date is fixed, so Party 1 gets the checklist now
+                        _just_confirmed = any(f == "Appointment_Status" and new == "Confirmed"
+                                              for f, old, new in field_map if old != new)
                         changes = [(f, old, new) for f, old, new in field_map if old != new]
 
                         # Always update snapshot to the just-saved values so the next
@@ -1258,6 +1315,7 @@ elif page == "✏️ Edit Records":
                             "Title_Status":           e_status,
                             "Remark":                 e_remark.strip(),
                             "Party_Name 1 Partners":  number_lines(e_partners),
+                            "Appointment_Status":     e_appt_status,
                         }
 
                         if changes:
@@ -1293,6 +1351,7 @@ elif page == "✏️ Edit Records":
                                     "Title_Status":           e_status,
                                     "Remark":                 e_remark.strip(),
                                     "Party_Name 1 Partners":  number_lines(e_partners),
+                                    "Appointment_Status":     e_appt_status,
                                 }
                                 notify_record_updated(
                                     entry_id=real_entry_id,
@@ -1302,6 +1361,35 @@ elif page == "✏️ Edit Records":
                                 )
                             except Exception:
                                 pass
+                            if _just_confirmed:
+                                # Same record shape New Entry sends the checklist with
+                                _confirmed_record = {
+                                    "entry_id":             real_entry_id,
+                                    "doc_type":             e_doc_type,
+                                    "appointment_date":     format_appt_date(e_date),
+                                    "appointment_time":     str(e_time),
+                                    "sro":                  e_sro,
+                                    "party_name_1":         e_party1.strip(),
+                                    "party1_mobile":        e_party1_mobile.strip(),
+                                    "party1_partners":      number_lines(e_partners),
+                                    "party_name_2":         new_party2,
+                                    "garvi_application_id": e_garvi.strip(),
+                                    "index_application_no": e_index_appli.strip(),
+                                    "index_no":             e_index_no.strip(),
+                                    "search_no":            e_search.strip(),
+                                    "title_status":         e_status,
+                                    "remark":               e_remark.strip(),
+                                    "created_by":           str(edit_rec.get("Created_By", "")),
+                                    "appointment_status":   e_appt_status,
+                                }
+                                with st.spinner("📱 Appointment confirmed — sending WhatsApp checklist to Party 1..."):
+                                    _cl_status = send_party1_checklist(_confirmed_record)
+                                st.session_state["_edit_checklist_result"] = _cl_status
+                                if _cl_status[0] == "sent":
+                                    try:
+                                        whatsapp_queue.flush()
+                                    except Exception:
+                                        pass
                         else:
                             st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
                             st.session_state["_edit_save_result"] = (

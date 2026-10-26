@@ -108,6 +108,8 @@ if "_new_entry_saved" in st.session_state:
         st.error(f"⚠️ {_wa_detail}")
     elif _wa_state == "failed":
         st.warning(f"⚠️ {_wa_detail}")
+    elif _wa_state == "tentative":
+        st.info(f"⏳ {_wa_detail}")
     elif _wa_detail:
         st.info(f"📱 WhatsApp to Party 1 not sent: {_wa_detail}")
     st.markdown("### 📄 Saved Record")
@@ -180,6 +182,12 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
         entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
     with c2:
         entry_time = appt_time_input("Time *", value=time(10, 0), key="entry_time")
+    appt_tentative = st.checkbox(
+        "⏳ Date not final yet (tentative / placeholder)", key="appt_tentative",
+        help="Saves the entry with this date as a placeholder. The Party 1 checklist and daily "
+             "reminders wait until you change the status to Confirmed in Edit Records.",
+    )
+    appointment_status = "Tentative" if appt_tentative else "Confirmed"
 
     # Row 2: Party Information
     st.markdown("### 👥 Party Information")
@@ -257,6 +265,7 @@ def build_preview_df(entry_id="PREVIEW"):
         "Document Type":     doc_type,
         "Appointment Date":  format_appt_date(entry_date),
         "Appointment Time":  str(entry_time),
+        "Appt. Status":      appointment_status,
         "SRO":               sro,
         "Party Name 1":      party_name_1,
         "Party 1 Mobile No": party1_mobile,
@@ -310,6 +319,7 @@ if submit_btn:
                 entry_time=datetime.now().strftime("%H:%M:%S"),
                 remark=remark.strip(),
                 party1_partners=number_lines(party1_partners),
+                appointment_status=appointment_status,
             )
 
             if success:
@@ -333,9 +343,15 @@ if submit_btn:
                     "created_by":           username,
                     "entry_date":           str(date.today()),
                     "entry_time":           datetime.now().strftime("%H:%M:%S"),
+                    "appointment_status":   appointment_status,
                 }
-                with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
-                    _wa_status = send_party1_checklist(_record)
+                if appt_tentative:
+                    # The date is a placeholder - the checklist goes out on confirmation
+                    _wa_status = ("tentative", "Tentative appointment - the Party 1 checklist will be "
+                                               "sent when you mark it Confirmed in Edit Records.")
+                else:
+                    with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
+                        _wa_status = send_party1_checklist(_record)
 
                 # WhatsApp worked, so the service is up: send anything left pending
                 if _wa_status[0] == "sent":

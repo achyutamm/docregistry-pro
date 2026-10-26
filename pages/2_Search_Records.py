@@ -55,6 +55,7 @@ COL_DISPLAY = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appointment Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -74,6 +75,7 @@ FIELD_LABELS = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appointment Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -248,7 +250,7 @@ if filtered.empty:
     st.info("No records match your search criteria.")
 else:
     display_cols = [
-        "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+        "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "Appointment_Status",
         "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
         "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
         "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time"
