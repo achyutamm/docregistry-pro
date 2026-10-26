@@ -143,6 +143,10 @@ class SheetsManager:
             "Remark",
             "Party_Name 1 Partners",   # other Party 1 names (partners), one per line
             "Appointment_Status",      # "Confirmed" or "Tentative" (placeholder date); blank = Confirmed
+            # English spelling of Gujarati names (blank when the name is already English)
+            "Party_Name 1 (English)",
+            "Party_Name 1 Partners (English)",
+            "Party_Name 2 (English)",
         ]
 
         # Auto-create headers in Sheet1 if it is empty (must be after self.headers is set)
@@ -242,8 +246,10 @@ class SheetsManager:
         entry_time,
         remark="",
         party1_partners="",
-        appointment_status="Confirmed"
+        appointment_status="Confirmed",
+        english_names=("", "", "")
     ):
+        """english_names: (Party 1, Partners, Party 2) in English - blank for names already in English."""
         entry_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
         row = [
@@ -265,7 +271,8 @@ class SheetsManager:
             entry_time,
             remark,
             party1_partners,
-            appointment_status
+            appointment_status,
+            *english_names,
         ]
 
         next_row = len(self.sheet.col_values(1)) + 1
@@ -301,7 +308,7 @@ class SheetsManager:
                       sro, party_name_1, party1_mobile, party_name_2,
                       garvi_application_id, index_application_no, index_no,
                       search_no, title_status, remark="", party1_partners=None,
-                      appointment_status=None):
+                      appointment_status=None, english_names=None):
         cell = self.sheet.find(str(entry_id), in_column=1)
         if not cell:
             return False
@@ -325,6 +332,9 @@ class SheetsManager:
         # S is Appointment_Status (col 19); None = leave as is
         if appointment_status is not None:
             self.sheet.update_cell(row, 19, appointment_status)
+        # T:V are the English names (Party 1, Partners, Party 2); None = leave as is
+        if english_names is not None:
+            self.sheet.update(f"T{row}:V{row}", [list(english_names)], value_input_option='RAW')
         return True
 
     # =====================================================

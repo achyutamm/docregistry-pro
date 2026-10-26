@@ -7,7 +7,8 @@ import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
 from utils.notification_router import notify_new_entry, send_party1_checklist
 from utils.date_utils import format_appt_date, appt_time_input
-from utils.sheets_manager import number_lines
+from utils.sheets_manager import number_lines, clean_lines
+from utils import gujarati_translit
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue
 from utils import phone_utils
@@ -259,8 +260,9 @@ auto_number_textarea("Party 1 Partners")
 # FORM ACTIONS
 # ============================================
 
-def build_preview_df(entry_id="PREVIEW"):
-    return pd.DataFrame([{
+def build_preview_df(entry_id="PREVIEW", english=("", "", "")):
+    _p1_en, _partners_en, _p2_en = english
+    row = {
         "Entry ID":          entry_id,
         "Document Type":     doc_type,
         "Appointment Date":  format_appt_date(entry_date),
@@ -278,7 +280,13 @@ def build_preview_df(entry_id="PREVIEW"):
         "Title Status":      title_status,
         "Remark":            remark,
         "Created By":        username,
-    }])
+    }
+    # English spelling of Gujarati names, when there is one
+    for label, value in (("Party Name 1 (English)", _p1_en), ("Party 1 Partners (English)", _partners_en),
+                         ("Party Name 2 (English)", _p2_en)):
+        if value:
+            row[label] = value
+    return pd.DataFrame([row])
 
 if clear_btn:
     _clear_form()
@@ -286,95 +294,163 @@ if clear_btn:
 
 if preview_btn and not submit_btn:
     st.info("👁️ Preview only – data is not saved to Google Sheets.")
-    st.dataframe(build_preview_df(), hide_index=True, use_container_width=True)
+    _xl_on = gujarati_translit.settings()["enabled"]
+    st.dataframe(build_preview_df(english=tuple(
+        gujarati_translit.english_for(v) if _xl_on else ""
+        for v in (party_name_1.strip(), number_lines(party1_partners),
+                  party_name_2 if party_name_2 != "-- Select --" else ""))),
+        hide_index=True, use_container_width=True)
+
+_party2_value = party_name_2 if party_name_2 != "-- Select --" else ""
+# Gujarati names get an English copy: (label, Gujarati as typed) for Party 1, Partners, Party 2
+_xlit = gujarati_translit.settings()
+_NAME_FIELDS = [
+    ("Party Name 1",     party_name_1.strip()),
+    ("Party 1 Partners", number_lines(party1_partners)),
+    ("Party Name 2",     _party2_value),
+]
+
+
+def _auto_english():
+    if not _xlit["enabled"]:
+        return ("", "", "")
+    return tuple(gujarati_translit.english_for(v) for _, v in _NAME_FIELDS)
+
+
+def _validation_error():
+    district = st.session_state.get("ne_district", "-- Select District --")
+    _sro     = st.session_state.get("ne_sro", "-- Select SRO --")
+    if not party_name_1.strip():
+        return "Please enter Party Name 1."
+    if district == "-- Select District --" or _sro == "-- Select SRO --":
+        return "Please select a District and SRO."
+    if phone_utils.validate(party1_cc, party1_number):
+        return f"Party 1 Mobile No: {phone_utils.validate(party1_cc, party1_number)}"
+    return None
+
+
+def _save_entry(english):
+    """english: (Party 1, Partners, Party 2) in English - blank where the name is already English."""
+    sro = st.session_state.get("ne_sro", "-- Select SRO --")
+    try:
+        sheets_manager = get_sheets_manager()
+
+        success, entry_id = sheets_manager.add_record(
+            doc_type=doc_type,
+            appointment_date=format_appt_date(entry_date),
+            appointment_time=str(entry_time),
+            sro=sro,
+            party_name_1=party_name_1.strip(),
+            party1_mobile=party1_mobile.strip(),
+            party_name_2=_party2_value,
+            garvi_application_id=garvi_appli_no.strip(),
+            index_application_no=index_appli_no.strip(),
+            index_no=index_no.strip(),
+            search_no=search_no.strip(),
+            title_status=title_status,
+            created_by=username,
+            entry_date=str(date.today()),
+            entry_time=datetime.now().strftime("%H:%M:%S"),
+            remark=remark.strip(),
+            party1_partners=number_lines(party1_partners),
+            appointment_status=appointment_status,
+            english_names=english,
+        )
+
+        if success:
+            clear_records_cache()
+            # Messages use the English names; the sheet keeps the Gujarati as typed
+            _en_p1, _en_partners, _en_p2 = english
+            _record = {
+                "entry_id":             entry_id,
+                "doc_type":             doc_type,
+                "appointment_date":     format_appt_date(entry_date),
+                "appointment_time":     str(entry_time),
+                "sro":                  sro,
+                "party_name_1":         _en_p1 or party_name_1.strip(),
+                "party1_mobile":        party1_mobile.strip(),
+                "party1_partners":      _en_partners or number_lines(party1_partners),
+                "party_name_2":         _en_p2 or _party2_value,
+                "garvi_application_id": garvi_appli_no.strip(),
+                "index_application_no": index_appli_no.strip(),
+                "index_no":             index_no.strip(),
+                "search_no":            search_no.strip(),
+                "title_status":         title_status,
+                "remark":               remark.strip(),
+                "created_by":           username,
+                "entry_date":           str(date.today()),
+                "entry_time":           datetime.now().strftime("%H:%M:%S"),
+                "appointment_status":   appointment_status,
+            }
+            if appt_tentative:
+                # The date is a placeholder - the checklist goes out on confirmation
+                _wa_status = ("tentative", "Tentative appointment - the Party 1 checklist will be "
+                                           "sent when you mark it Confirmed in Edit Records.")
+            else:
+                with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
+                    _wa_status = send_party1_checklist(_record)
+
+            # WhatsApp worked, so the service is up: send anything left pending
+            if _wa_status[0] == "sent":
+                try:
+                    whatsapp_queue.flush()
+                except Exception:
+                    pass
+
+            notify_new_entry(_record)
+            st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
+            st.session_state.pop("_ne_xlit_review", None)
+            st.session_state["_new_entry_saved"] = {
+                "entry_id":   entry_id,
+                "created_by": username,
+                "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "preview":    build_preview_df(entry_id, english).to_dict("records"),
+                "party1_wa":  _wa_status,
+            }
+            _clear_form()
+            st.rerun()
+        else:
+            st.error("❌ Failed to save entry. Please try again.")
+    except Exception as e:
+        st.error(f"❌ Error while saving to Google Sheets: {e}")
+
 
 if submit_btn:
-    district = st.session_state.get("ne_district", "-- Select District --")
-    sro      = st.session_state.get("ne_sro", "-- Select SRO --")
-    if not party_name_1.strip():
-        st.error("❌ Please enter Party Name 1.")
-    elif district == "-- Select District --" or sro == "-- Select SRO --":
-        st.error("❌ Please select a District and SRO.")
-    elif phone_utils.validate(party1_cc, party1_number):
-        st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(party1_cc, party1_number)}")
+    _err = _validation_error()
+    if _err:
+        st.error(f"❌ {_err}")
+    elif _xlit["enabled"] and _xlit["review"] and any(_auto_english()):
+        # Staff check the English spelling before saving (setting in Configuration)
+        st.session_state["_ne_xlit_review"] = _auto_english()
     else:
-        try:
-            sheets_manager = get_sheets_manager()
+        _save_entry(_auto_english())
 
-            success, entry_id = sheets_manager.add_record(
-                doc_type=doc_type,
-                appointment_date=format_appt_date(entry_date),
-                appointment_time=str(entry_time),
-                sro=sro,
-                party_name_1=party_name_1.strip(),
-                party1_mobile=party1_mobile.strip(),
-                party_name_2=party_name_2 if party_name_2 != "-- Select --" else "",
-                garvi_application_id=garvi_appli_no.strip(),
-                index_application_no=index_appli_no.strip(),
-                index_no=index_no.strip(),
-                search_no=search_no.strip(),
-                title_status=title_status,
-                created_by=username,
-                entry_date=str(date.today()),
-                entry_time=datetime.now().strftime("%H:%M:%S"),
-                remark=remark.strip(),
-                party1_partners=number_lines(party1_partners),
-                appointment_status=appointment_status,
-            )
-
-            if success:
-                clear_records_cache()
-                _record = {
-                    "entry_id":             entry_id,
-                    "doc_type":             doc_type,
-                    "appointment_date":     format_appt_date(entry_date),
-                    "appointment_time":     str(entry_time),
-                    "sro":                  sro,
-                    "party_name_1":         party_name_1.strip(),
-                    "party1_mobile":        party1_mobile.strip(),
-                    "party1_partners":      number_lines(party1_partners),
-                    "party_name_2":         party_name_2 if party_name_2 != "-- Select --" else "",
-                    "garvi_application_id": garvi_appli_no.strip(),
-                    "index_application_no": index_appli_no.strip(),
-                    "index_no":             index_no.strip(),
-                    "search_no":            search_no.strip(),
-                    "title_status":         title_status,
-                    "remark":               remark.strip(),
-                    "created_by":           username,
-                    "entry_date":           str(date.today()),
-                    "entry_time":           datetime.now().strftime("%H:%M:%S"),
-                    "appointment_status":   appointment_status,
-                }
-                if appt_tentative:
-                    # The date is a placeholder - the checklist goes out on confirmation
-                    _wa_status = ("tentative", "Tentative appointment - the Party 1 checklist will be "
-                                               "sent when you mark it Confirmed in Edit Records.")
-                else:
-                    with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
-                        _wa_status = send_party1_checklist(_record)
-
-                # WhatsApp worked, so the service is up: send anything left pending
-                if _wa_status[0] == "sent":
-                    try:
-                        whatsapp_queue.flush()
-                    except Exception:
-                        pass
-
-                notify_new_entry(_record)
-                st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
-                st.session_state["_new_entry_saved"] = {
-                    "entry_id":   entry_id,
-                    "created_by": username,
-                    "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "preview":    build_preview_df(entry_id).to_dict("records"),
-                    "party1_wa":  _wa_status,
-                }
-                _clear_form()
-                st.rerun()
+if "_ne_xlit_review" in st.session_state:
+    _suggested = st.session_state["_ne_xlit_review"]
+    with st.container(border=True):
+        st.markdown("#### 🔤 Check the English names")
+        st.caption("These names are in Gujarati. The English spelling below is used in WhatsApp messages "
+                   "and saved next to the Gujarati name. Correct it if needed, then save.")
+        _checked = []
+        for n, ((label, guj), en) in enumerate(zip(_NAME_FIELDS, _suggested)):
+            if not en:
+                _checked.append("")
+                continue
+            st.markdown(f"**{label}:** " + guj.replace("\n", "  \n"))
+            if "\n" in guj:
+                _checked.append(st.text_area(f"{label} (English)", value=en, key=f"ne_xlit_{_fver}_{n}_{abs(hash(guj))}"))
             else:
-                st.error("❌ Failed to save entry. Please try again.")
-        except Exception as e:
-            st.error(f"❌ Error while saving to Google Sheets: {e}")
+                _checked.append(st.text_input(f"{label} (English)", value=en, key=f"ne_xlit_{_fver}_{n}_{abs(hash(guj))}"))
+        rc1, rc2 = st.columns([3, 1])
+        if rc1.button("💾 Save Entry with these English names", type="primary", use_container_width=True):
+            _err = _validation_error()
+            if _err:
+                st.error(f"❌ {_err}")
+            else:
+                _save_entry(tuple(clean_lines(x) if "\n" in x else " ".join(x.split()) for x in _checked))
+        if rc2.button("✖ Cancel", use_container_width=True):
+            st.session_state.pop("_ne_xlit_review", None)
+            st.rerun()
 
 # ============================================
 # HELP / INSTRUCTIONS

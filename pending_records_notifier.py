@@ -18,6 +18,7 @@ import pandas as pd
 
 from utils.sheets_manager import SheetsManager, is_tentative
 from utils.notification_router import notify_pending_records_alert
+from utils.gujarati_translit import use_english_names
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # seconds between retries
@@ -53,7 +54,7 @@ def run():
         return
 
     notify_pending_records_alert(
-        over_30.to_dict("records"),
+        [use_english_names(r) for r in over_30.to_dict("records")],
         len(over_30),
         len(long_pending),
     )

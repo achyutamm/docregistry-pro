@@ -16,7 +16,7 @@ from utils.app_env import CONFIG_FILE
 
 class SimpleAuth:
     def __init__(self, config_file=CONFIG_FILE, cookie_manager=None, sheets_manager=None):
-        with open(config_file, 'r') as f:
+        with open(config_file, 'r', encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
         self._sm            = sheets_manager
         self.session_config = self.config.get('session', {})
@@ -181,7 +181,7 @@ class SimpleAuth:
             self._sm.add_user_to_sheet(username, hashed, name, role, config_access)
             self._reload_users()
         else:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f)
             if "users" not in cfg:
                 cfg["users"] = {}
@@ -189,7 +189,7 @@ class SimpleAuth:
                 "password": hashed, "name": name, "role": role,
                 "config_access": bool(config_access)
             }
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
             self.users = cfg["users"]
         return True
@@ -199,12 +199,12 @@ class SimpleAuth:
             self._sm.update_user_config_access_sheet(username, value)
             self._reload_users()
         else:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f)
             if username not in cfg.get("users", {}):
                 return False
             cfg["users"][username]["config_access"] = bool(value)
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
             self.users = cfg["users"]
         if st.session_state.get("username") == username:
@@ -217,12 +217,12 @@ class SimpleAuth:
             self._sm.update_user_password_sheet(username, hashed)
             self._reload_users()
         else:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f)
             if username not in cfg.get("users", {}):
                 return False
             cfg["users"][username]["password"] = hashed
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
             self.users = cfg["users"]
         if st.session_state.get("username") == username:
@@ -234,12 +234,12 @@ class SimpleAuth:
             self._sm.update_user_role_sheet(username, new_role.lower())
             self._reload_users()
         else:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f)
             if username not in cfg.get("users", {}):
                 return False
             cfg["users"][username]["role"] = new_role.lower()
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
             self.users = cfg["users"]
         if st.session_state.get("username") == username:
@@ -251,11 +251,11 @@ class SimpleAuth:
             self._sm.delete_user_from_sheet(username)
             self._reload_users()
         else:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 cfg = yaml.safe_load(f)
             if username in cfg.get("users", {}):
                 del cfg["users"][username]
-                with open(config_file, "w") as f:
+                with open(config_file, "w", encoding="utf-8") as f:
                     yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
                 self.users = cfg.get("users", {})
         return True

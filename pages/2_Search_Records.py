@@ -69,6 +69,9 @@ COL_DISPLAY = {
     "Created_By":             "Created By",
     "Entry_Date":             "Entry Date",
     "Entry_Time":             "Entry Time",
+    "Party_Name 1 (English)":          "Party Name 1 (English)",
+    "Party_Name 1 Partners (English)": "Party 1 Partners (English)",
+    "Party_Name 2 (English)":          "Party Name 2 (English)",
 }
 
 FIELD_LABELS = {
@@ -198,6 +201,11 @@ if keyword.strip():
         filtered["Inedex_Application_No"].astype(str).str.lower().str.contains(kw, na=False) |
         filtered["Search_No"].astype(str).str.lower().str.contains(kw, na=False)
     )
+    # Partners and the English spelling of Gujarati names ("patel" finds પટેલ)
+    for _col in ["Party_Name 1 Partners", "Party_Name 1 (English)",
+                 "Party_Name 1 Partners (English)", "Party_Name 2 (English)"]:
+        if _col in filtered.columns:
+            mask |= filtered[_col].astype(str).str.lower().str.contains(kw, na=False)
     filtered = filtered[mask]
 
 if status_filter:
@@ -253,7 +261,8 @@ else:
         "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "Appointment_Status",
         "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
         "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
-        "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time"
+        "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time",
+        "Party_Name 1 (English)", "Party_Name 1 Partners (English)", "Party_Name 2 (English)",
     ]
     display_cols = [c for c in display_cols if c in filtered.columns]
     result_df = filtered[display_cols].reset_index(drop=True)

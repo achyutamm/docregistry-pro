@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timedelta
 from utils.sheets_manager import SheetsManager
 from utils.notification_router import notify_today_appointments, notify_tomorrow_appointments
+from utils.gujarati_translit import use_english_names
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # seconds between retries
@@ -29,12 +30,12 @@ def run(reminder: int):
         tomorrow = tomorrow_date.strftime("%d/%m/%Y")
         df = sm.get_appointments_for_date(tomorrow_date)
         print(f"Reminder 1 (day-before): found {len(df)} appointment(s) for {tomorrow}.")
-        notify_tomorrow_appointments(df.to_dict("records"), tomorrow)
+        notify_tomorrow_appointments([use_english_names(r) for r in df.to_dict("records")], tomorrow)
     else:
         # Day-of reminder: fetch today's appointments
         df = sm.get_appointments_for_date()
         print(f"Reminder 2 (day-of): found {len(df)} appointment(s) for today.")
-        notify_today_appointments(df.to_dict("records"))
+        notify_today_appointments([use_english_names(r) for r in df.to_dict("records")])
 
     print("Notification sent.")
 
