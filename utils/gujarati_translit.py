@@ -7,20 +7,18 @@ is dropped (ગણપતલાલ -> Ganpatlal, not Ganapatalala). Words with a 
 English spelling (મહેતા -> Mehta, મે. -> M/s) come from SPELLINGS plus the
 admin's own list in Configuration (transliteration.corrections).
 
-The Gujarati name stays in its column as typed; the English version goes in
-the matching "(English)" column and is what WhatsApp messages use.
+Party Name 1 and Party Name 2 are saved in English in their own columns.
+Party 1 Partners keeps the Gujarati list as typed, with the English list in
+"Party_Name 1 Partners (English)" - that is what WhatsApp messages use.
 """
 
 import re
 
 from utils.app_env import CONFIG_FILE
 
-# Sheet column -> its English column
-ENGLISH_COLUMNS = {
-    "Party_Name 1":          "Party_Name 1 (English)",
-    "Party_Name 1 Partners": "Party_Name 1 Partners (English)",
-    "Party_Name 2":          "Party_Name 2 (English)",
-}
+# Sheet column -> its English column (Party 1 / Party 2 names are saved in English in place)
+PARTNERS_EN = "Party_Name 1 Partners (English)"
+ENGLISH_COLUMNS = {"Party_Name 1 Partners": PARTNERS_EN}
 
 _CONS = {
     "ક": "k", "ખ": "kh", "ગ": "g", "ઘ": "gh", "ઙ": "n", "ચ": "ch", "છ": "chh", "જ": "j", "ઝ": "jh",
@@ -152,7 +150,7 @@ def to_english(text, spellings: dict = None) -> str:
 
 
 def english_for(text) -> str:
-    """Value for an "(English)" column: the English spelling when the name is in Gujarati, else blank."""
+    """English spelling when the text has Gujarati, else blank (= nothing to convert)."""
     return to_english(text) if has_gujarati(text) else ""
 
 
@@ -168,8 +166,8 @@ def settings() -> dict:
 
 
 def use_english_names(record: dict) -> dict:
-    """Copy of a sheet-style record with each party name replaced by its English
-    version when one is saved - what WhatsApp messages should show."""
+    """Copy of a sheet-style record with the partners replaced by their English
+    list when one is saved - what WhatsApp messages should show."""
     rec = dict(record)
     for col, en_col in ENGLISH_COLUMNS.items():
         en = str(rec.get(en_col, "") or "").strip()

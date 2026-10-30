@@ -99,9 +99,7 @@ COL_DISPLAY = {
     "Created_By":             "Created By",
     "Entry_Date":             "Entry Date",
     "Entry_Time":             "Entry Time",
-    "Party_Name 1 (English)":          "Party Name 1 (English)",
     "Party_Name 1 Partners (English)": "Party 1 Partners (English)",
-    "Party_Name 2 (English)":          "Party Name 2 (English)",
 }
 
 def display_df(df):
@@ -745,8 +743,7 @@ elif page == "🔍 Search Records":
             filtered["Search_No"].astype(str).str.lower().str.contains(kw, na=False)
         )
         # Partners and the English spelling of Gujarati names ("patel" finds પટેલ)
-        for _col in ["Party_Name 1 Partners", "Party_Name 1 (English)",
-                     "Party_Name 1 Partners (English)", "Party_Name 2 (English)"]:
+        for _col in ["Party_Name 1 Partners", "Party_Name 1 Partners (English)"]:
             if _col in filtered.columns:
                 mask |= filtered[_col].astype(str).str.lower().str.contains(kw, na=False)
         filtered = filtered[mask]
@@ -801,7 +798,7 @@ elif page == "🔍 Search Records":
             "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
             "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
             "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time",
-            "Party_Name 1 (English)", "Party_Name 1 Partners (English)", "Party_Name 2 (English)",
+            "Party_Name 1 Partners (English)",
         ]
         display_cols = [c for c in display_cols if c in filtered.columns]
         result_df = filtered[display_cols].reset_index(drop=True)
@@ -834,9 +831,7 @@ elif page == "🔍 Search Records":
                 "Search_No": "Search No.", "Title_Status": "Title Status",
                 "Remark": "Remark", "Party_Name 1 Partners": "Party 1 Partners",
                 "Appointment_Status": "Appointment Status",
-                "Party_Name 1 (English)": "Party Name 1 (English)",
                 "Party_Name 1 Partners (English)": "Party 1 Partners (English)",
-                "Party_Name 2 (English)": "Party Name 2 (English)",
             }
             try:
                 h_df = get_history_cached(sheets_manager, selected_entry_id)
@@ -926,9 +921,7 @@ elif page == "✏️ Edit Records":
         "Remark":                 "Remark",
         "Party_Name 1 Partners":  "Party 1 Partners",
         "Appointment_Status":     "Appointment Status",
-        "Party_Name 1 (English)":          "Party Name 1 (English)",
         "Party_Name 1 Partners (English)": "Party 1 Partners (English)",
-        "Party_Name 2 (English)":          "Party Name 2 (English)",
     }
     APPT_STATUS_OPTIONS = ["Confirmed", "Tentative"]
 
@@ -962,8 +955,7 @@ elif page == "✏️ Edit Records":
     _EDIT_SEARCH_FIELDS = {
         "GARVI Application ID": ["Garvi_Application_ID"],
         "Entry ID":             ["Entry_ID"],
-        "Party Name":           ["Party_Name 1", "Party_Name 1 Partners", "Party_Name 1 (English)",
-                                 "Party_Name 1 Partners (English)"],
+        "Party Name":           ["Party_Name 1", "Party_Name 1 Partners", "Party_Name 1 Partners (English)"],
         "Index No":             ["Index_No"],
         "Index Application No": ["Inedex_Application_No"],
         "Search No":            ["Search_No"],
@@ -1048,9 +1040,7 @@ elif page == "✏️ Edit Records":
                     "Title_Status":           str(edit_rec.get("Title_Status", "")),
                     "Party_Name 1 Partners":  str(edit_rec.get("Party_Name 1 Partners", "") or ""),
                     "Appointment_Status":     _appt_status(edit_rec.get("Appointment_Status", "")),
-                    "Party_Name 1 (English)":          str(edit_rec.get("Party_Name 1 (English)", "") or ""),
                     "Party_Name 1 Partners (English)": str(edit_rec.get("Party_Name 1 Partners (English)", "") or ""),
-                    "Party_Name 2 (English)":          str(edit_rec.get("Party_Name 2 (English)", "") or ""),
                 }
 
     if edit_rec is not None:
@@ -1200,27 +1190,19 @@ elif page == "✏️ Edit Records":
                 key="e_party2"
             )
 
-            # English spelling of Gujarati names - prefilled with the saved one, or a suggestion
+            # English list for partners typed in Gujarati - the saved one, or a suggestion.
+            # (Party Name 1 / 2 typed in Gujarati are converted to English on save.)
             _xl = gujarati_translit.settings()
-            _en_loaded = {}
-            for _col, _en_col in gujarati_translit.ENGLISH_COLUMNS.items():
-                _saved_en = str(edit_rec.get(_en_col, "") or "").strip()
-                _en_loaded[_en_col] = _saved_en or (gujarati_translit.english_for(edit_rec.get(_col, ""))
-                                                    if _xl["enabled"] else "")
-            e_english = dict(_en_loaded)
-            if _xl["enabled"] and any(_en_loaded.values()):
-                st.markdown("##### 🔤 English names (used in WhatsApp messages)")
-                st.caption("Shown for names written in Gujarati. If you change a Gujarati name above, "
-                           "leave its English box as it is and it is converted again on save.")
-                for _en_col, _label in (("Party_Name 1 (English)", "Party Name 1 (English)"),
-                                        ("Party_Name 1 Partners (English)", "Party 1 Partners (English)"),
-                                        ("Party_Name 2 (English)", "Party Name 2 (English)")):
-                    if not _en_loaded[_en_col]:
-                        continue
-                    if "\n" in _en_loaded[_en_col]:
-                        e_english[_en_col] = st.text_area(_label, value=_en_loaded[_en_col], key=f"e_en_{_en_col}")
-                    else:
-                        e_english[_en_col] = st.text_input(_label, value=_en_loaded[_en_col], key=f"e_en_{_en_col}")
+            _PEN = gujarati_translit.PARTNERS_EN
+            _partners_en_loaded = (str(edit_rec.get(_PEN, "") or "").strip()
+                                   or (gujarati_translit.english_for(edit_rec.get("Party_Name 1 Partners", ""))
+                                       if _xl["enabled"] else ""))
+            e_partners_en = _partners_en_loaded
+            if _xl["enabled"] and _partners_en_loaded:
+                e_partners_en = st.text_area(
+                    "Party 1 Partners (English)", value=_partners_en_loaded, key="e_partners_en", height=100,
+                    help="Used in WhatsApp messages. If you change the Gujarati partners above, leave this "
+                         "as it is and it is converted again on save.")
 
             st.markdown("### 📂 Application Details")
             c1, c2, c3 = st.columns(3)
@@ -1296,21 +1278,24 @@ elif page == "✏️ Edit Records":
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
-                    # English names: a Gujarati name that changed gets converted again unless
-                    # staff already typed their own English; English names need none.
-                    _new_names = {"Party_Name 1": e_party1.strip(), "Party_Name 1 Partners": number_lines(e_partners),
-                                  "Party_Name 2": new_party2}
-                    _new_en = {}
-                    for _col, _en_col in gujarati_translit.ENGLISH_COLUMNS.items():
-                        _typed = e_english.get(_en_col, "")
-                        _typed = (clean_lines(_typed) if "\n" in _typed else " ".join(_typed.split()))
-                        if not gujarati_translit.has_gujarati(_new_names[_col]) or not _xl["enabled"]:
-                            _new_en[_en_col] = "" if _xl["enabled"] else str(edit_rec.get(_en_col, "") or "")
-                        elif (_new_names[_col] != str(edit_rec.get(_col, "") or "").strip()
-                              and _typed == _en_loaded[_en_col]):
-                            _new_en[_en_col] = gujarati_translit.english_for(_new_names[_col])
-                        else:
-                            _new_en[_en_col] = _typed or gujarati_translit.english_for(_new_names[_col])
+                    # Party Name 1 / 2 typed in Gujarati are saved in English
+                    if _xl["enabled"]:
+                        e_party1   = gujarati_translit.to_english(e_party1.strip())
+                        new_party2 = gujarati_translit.to_english(new_party2)
+                    # Partners English list: converted again when the Gujarati list changed and
+                    # staff didn't type their own; blank when the partners are in English.
+                    _new_partners = number_lines(e_partners)
+                    _typed_en = clean_lines(e_partners_en)
+                    if not _xl["enabled"]:
+                        _partners_en_new = str(edit_rec.get(_PEN, "") or "")
+                    elif not gujarati_translit.has_gujarati(_new_partners):
+                        _partners_en_new = ""
+                    elif (_new_partners != str(edit_rec.get("Party_Name 1 Partners", "") or "").strip()
+                          and _typed_en == clean_lines(_partners_en_loaded)):
+                        _partners_en_new = gujarati_translit.english_for(_new_partners)
+                    else:
+                        _partners_en_new = number_lines(_typed_en) or gujarati_translit.english_for(_new_partners)
+                    _new_en = {_PEN: _partners_en_new}
 
                     ok = sheets_manager.update_record(
                         entry_id=real_entry_id,
@@ -1329,7 +1314,7 @@ elif page == "✏️ Edit Records":
                         remark=e_remark.strip(),
                         party1_partners=number_lines(e_partners),
                         appointment_status=e_appt_status,
-                        english_names=tuple(_new_en[c] for c in gujarati_translit.ENGLISH_COLUMNS.values()),
+                        partners_english=_partners_en_new,
                     )
 
                     if ok:
@@ -1437,10 +1422,10 @@ elif page == "✏️ Edit Records":
                                     "appointment_date":     format_appt_date(e_date),
                                     "appointment_time":     str(e_time),
                                     "sro":                  e_sro,
-                                    "party_name_1":         _new_en["Party_Name 1 (English)"] or e_party1.strip(),
+                                    "party_name_1":         e_party1.strip(),
                                     "party1_mobile":        e_party1_mobile.strip(),
-                                    "party1_partners":      _new_en["Party_Name 1 Partners (English)"] or number_lines(e_partners),
-                                    "party_name_2":         _new_en["Party_Name 2 (English)"] or new_party2,
+                                    "party1_partners":      _partners_en_new or number_lines(e_partners),
+                                    "party_name_2":         new_party2,
                                     "garvi_application_id": e_garvi.strip(),
                                     "index_application_no": e_index_appli.strip(),
                                     "index_no":             e_index_no.strip(),
@@ -2181,10 +2166,10 @@ elif page == "⚙️ Configuration":
         st.subheader("Gujarati → English Names")
         st.caption(
             "When Party Name 1, Party 1 Partners or Party Name 2 is typed in Gujarati, the app writes it "
-            "in English too (ભાવેશકુમાર ગણપતલાલ પટેલ → Bhaveshkumar Ganpatlal Patel). The Gujarati name "
-            "stays in the sheet as typed; the English one is saved next to it and used in WhatsApp "
-            "messages (group, Party 1 checklist, reminders). The conversion runs inside the app — "
-            "no outside service."
+            "in English (ભાવેશકુમાર ગણપતલાલ પટેલ → Bhaveshkumar Ganpatlal Patel). Party Name 1 and "
+            "Party Name 2 are saved in English; Party 1 Partners keeps the Gujarati list with the English "
+            "list in the 'Party_Name 1 Partners (English)' column. WhatsApp messages (group, Party 1 "
+            "checklist, reminders) use the English. The conversion runs inside the app — no outside service."
         )
         _xl_cfg = config.get("transliteration", {}) or {}
         _wk = st.session_state["cfg_widget_key"]

@@ -269,10 +269,10 @@ def build_preview_df(entry_id="PREVIEW", english=("", "", "")):
         "Appointment Time":  str(entry_time),
         "Appt. Status":      appointment_status,
         "SRO":               sro,
-        "Party Name 1":      party_name_1,
+        "Party Name 1":      _p1_en or party_name_1,
         "Party 1 Mobile No": party1_mobile,
         "Party 1 Partners":  number_lines(party1_partners),
-        "Party Name 2":      party_name_2 if party_name_2 != "-- Select --" else "",
+        "Party Name 2":      _p2_en or (party_name_2 if party_name_2 != "-- Select --" else ""),
         "GARVI App. No.":    garvi_appli_no,
         "Index App. No.":    index_appli_no,
         "Index No.":         index_no,
@@ -281,11 +281,8 @@ def build_preview_df(entry_id="PREVIEW", english=("", "", "")):
         "Remark":            remark,
         "Created By":        username,
     }
-    # English spelling of Gujarati names, when there is one
-    for label, value in (("Party Name 1 (English)", _p1_en), ("Party 1 Partners (English)", _partners_en),
-                         ("Party Name 2 (English)", _p2_en)):
-        if value:
-            row[label] = value
+    if _partners_en:
+        row["Party 1 Partners (English)"] = _partners_en
     return pd.DataFrame([row])
 
 if clear_btn:
@@ -330,8 +327,12 @@ def _validation_error():
 
 
 def _save_entry(english):
-    """english: (Party 1, Partners, Party 2) in English - blank where the name is already English."""
+    """english: (Party 1, Partners, Party 2) in English - blank where the name is already English.
+    Party 1 / Party 2 are saved in English; partners keep the Gujarati list plus the English one."""
     sro = st.session_state.get("ne_sro", "-- Select SRO --")
+    _en_p1, _en_partners, _en_p2 = english
+    _p1_saved = _en_p1 or party_name_1.strip()
+    _p2_saved = _en_p2 or _party2_value
     try:
         sheets_manager = get_sheets_manager()
 
@@ -340,9 +341,9 @@ def _save_entry(english):
             appointment_date=format_appt_date(entry_date),
             appointment_time=str(entry_time),
             sro=sro,
-            party_name_1=party_name_1.strip(),
+            party_name_1=_p1_saved,
             party1_mobile=party1_mobile.strip(),
-            party_name_2=_party2_value,
+            party_name_2=_p2_saved,
             garvi_application_id=garvi_appli_no.strip(),
             index_application_no=index_appli_no.strip(),
             index_no=index_no.strip(),
@@ -354,23 +355,22 @@ def _save_entry(english):
             remark=remark.strip(),
             party1_partners=number_lines(party1_partners),
             appointment_status=appointment_status,
-            english_names=english,
+            partners_english=_en_partners,
         )
 
         if success:
             clear_records_cache()
-            # Messages use the English names; the sheet keeps the Gujarati as typed
-            _en_p1, _en_partners, _en_p2 = english
+            # Messages use the English names
             _record = {
                 "entry_id":             entry_id,
                 "doc_type":             doc_type,
                 "appointment_date":     format_appt_date(entry_date),
                 "appointment_time":     str(entry_time),
                 "sro":                  sro,
-                "party_name_1":         _en_p1 or party_name_1.strip(),
+                "party_name_1":         _p1_saved,
                 "party1_mobile":        party1_mobile.strip(),
                 "party1_partners":      _en_partners or number_lines(party1_partners),
-                "party_name_2":         _en_p2 or _party2_value,
+                "party_name_2":         _p2_saved,
                 "garvi_application_id": garvi_appli_no.strip(),
                 "index_application_no": index_appli_no.strip(),
                 "index_no":             index_no.strip(),
@@ -429,8 +429,9 @@ if "_ne_xlit_review" in st.session_state:
     _suggested = st.session_state["_ne_xlit_review"]
     with st.container(border=True):
         st.markdown("#### 🔤 Check the English names")
-        st.caption("These names are in Gujarati. The English spelling below is used in WhatsApp messages "
-                   "and saved next to the Gujarati name. Correct it if needed, then save.")
+        st.caption("These names are in Gujarati. Party Name 1 / Party Name 2 are saved in English; "
+                   "partners keep the Gujarati list with the English list next to it. The English is "
+                   "used in WhatsApp messages. Correct it if needed, then save.")
         _checked = []
         for n, ((label, guj), en) in enumerate(zip(_NAME_FIELDS, _suggested)):
             if not en:
@@ -447,7 +448,9 @@ if "_ne_xlit_review" in st.session_state:
             if _err:
                 st.error(f"❌ {_err}")
             else:
-                _save_entry(tuple(clean_lines(x) if "\n" in x else " ".join(x.split()) for x in _checked))
+                _p1c, _partnersc, _p2c = _checked
+                # Partners keep the "1 Name" numbering, one per line, like the Gujarati list
+                _save_entry((" ".join(_p1c.split()), number_lines(_partnersc), " ".join(_p2c.split())))
         if rc2.button("✖ Cancel", use_container_width=True):
             st.session_state.pop("_ne_xlit_review", None)
             st.rerun()
