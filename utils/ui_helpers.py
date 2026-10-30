@@ -48,12 +48,11 @@ def auto_number_textarea(label: str):
   doc.addEventListener("input", function (e) {
     const el = e.target;
     if (ownChange || !isTarget(el) || doc.activeElement !== el) return;
-    if (el.value === "") {
-      setValue(el, "1 ", 2);
-    } else if (!/^\\s*\\d/.test(el.value)) {
-      const caret = el.selectionStart + 2;
-      setValue(el, "1 " + el.value, caret);
-    }
+    const v = el.value;
+    if (/^\\d+ /.test(v)) return;
+    // "", "1", "1Rakesh", " Rakesh", "Rakesh"... -> "1 " + the name
+    const fixed = "1 " + v.replace(/^[\\s\\d.)]*/, "");
+    setValue(el, fixed, Math.max(2, el.selectionStart + fixed.length - v.length));
   }, true);
 
   doc.addEventListener("keydown", function (e) {
