@@ -28,9 +28,12 @@ def auto_number_textarea(label: str):
   window.parent[KEY] = true;
 
   const setter = Object.getOwnPropertyDescriptor(window.parent.HTMLTextAreaElement.prototype, "value").set;
+  let ownChange = false;                     // our own edits also fire "input" - don't react to them
   function setValue(el, value, caret) {
+    ownChange = true;
     setter.call(el, value);                  // native setter so React/Streamlit sees the change
     el.dispatchEvent(new Event("input", { bubbles: true }));
+    ownChange = false;
     el.setSelectionRange(caret, caret);
   }
   const isTarget = (el) => el && el.tagName === "TEXTAREA" && el.getAttribute("aria-label") === LABEL;
@@ -38,6 +41,19 @@ def auto_number_textarea(label: str):
   doc.addEventListener("focusin", function (e) {
     const el = e.target;
     if (isTarget(el) && el.value === "") setValue(el, "1 ", 2);
+  }, true);
+
+  // Keep the "1 " on the first line while typing: deleting everything brings it back,
+  // and typing over a selected-all box puts it in front of the new text.
+  doc.addEventListener("input", function (e) {
+    const el = e.target;
+    if (ownChange || !isTarget(el) || doc.activeElement !== el) return;
+    if (el.value === "") {
+      setValue(el, "1 ", 2);
+    } else if (!/^\\s*\\d/.test(el.value)) {
+      const caret = el.selectionStart + 2;
+      setValue(el, "1 " + el.value, caret);
+    }
   }, true);
 
   doc.addEventListener("keydown", function (e) {
