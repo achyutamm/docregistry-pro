@@ -106,9 +106,6 @@ with top_col2:
 if "_new_entry_saved" in st.session_state:
     _saved = st.session_state.pop("_new_entry_saved")
     st.success("✅ Entry saved in Tentative Records.")
-    st.info("⏳ No WhatsApp message was sent. When the final date is fixed, open this record in "
-            "✏️ Edit Records and press ✅ Confirm Appointment: it then moves to the main sheet, "
-            "and Party 1 and the group get their messages.")
     st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
     st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
     st.markdown("### 📄 Saved Record")
