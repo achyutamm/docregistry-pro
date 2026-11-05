@@ -52,6 +52,7 @@ from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
 from utils import gujarati_translit
 from utils.gujarati_translit import use_english_names, use_english_changes
+from utils.ui_helpers import nav_options
 from utils.app_env import CONFIG_FILE, IS_DEV
 
 # =====================================================
@@ -292,15 +293,10 @@ if IS_DEV:
 st.sidebar.markdown(f"👋 **{user_info['name']}**")
 st.sidebar.markdown(f"Role: **{user_info['role'].title()}**")
 
-_nav = ["🏠 Dashboard", "📅 Calendar", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
-if user_info.get("role") == "admin":
-    _nav.append("👥 User Management")
-if user_info.get("config_access", False):
-    _nav.append("⚙️ Configuration")
+page = st.sidebar.radio("Navigation", nav_options(user_info), label_visibility="collapsed", key="nav_page")
 
-page = st.sidebar.radio("Navigation", _nav, label_visibility="collapsed", key="nav_page")
-
-if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True):
+# _logout_requested: Logout pressed on the New Entry page (the login cookie is handled here)
+if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True) or st.session_state.pop("_logout_requested", False):
     auth.logout()
 
 # =====================================================

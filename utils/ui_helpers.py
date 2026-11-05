@@ -7,6 +7,16 @@ import json
 import streamlit.components.v1 as components
 
 
+def nav_options(user_info: dict) -> list:
+    """The sidebar menu, the same on every page that shows it."""
+    nav = ["🏠 Dashboard", "📅 Calendar", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
+    if user_info.get("role") == "admin":
+        nav.append("👥 User Management")
+    if user_info.get("config_access", False):
+        nav.append("⚙️ Configuration")
+    return nav
+
+
 def auto_number_textarea(label: str):
     """Live numbering for a st.text_area with this exact label (e.g. "Party 1 Partners"):
     focusing the empty box writes "1 ", and Enter starts the next line with "2 ", "3 "…

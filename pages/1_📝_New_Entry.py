@@ -9,7 +9,7 @@ from utils.notification_router import notify_new_entry, send_party1_checklist
 from utils.date_utils import format_appt_date, appt_time_input
 from utils.sheets_manager import number_lines, clean_lines
 from utils import gujarati_translit
-from utils.ui_helpers import auto_number_textarea
+from utils.ui_helpers import auto_number_textarea, nav_options
 from utils import whatsapp_queue
 from utils import phone_utils
 from datetime import datetime, date, time
@@ -55,25 +55,32 @@ user_info = st.session_state.get('user_info', {})
 # ============================================
 # CUSTOM SIDEBAR NAVIGATION
 # ============================================
+NAV_THIS_PAGE = "📝 New Entry"
+
+
+def _on_nav_change():
+    # Everything else in the menu lives in app.py. Put this menu back on New Entry
+    # so it is right when staff come back to this page.
+    st.session_state["nav_page"] = st.session_state["ne_sidebar_nav"]
+    st.session_state["ne_sidebar_nav"] = NAV_THIS_PAGE
+    st.session_state["_ne_leave_page"] = True
+
+
+if st.session_state.pop("_ne_leave_page", False):
+    st.switch_page("app.py")
+
 with st.sidebar:
-    st.title("🏛️ DocRegistry Pro")
+    st.title("🏠 DocRegistry Pro")
     if IS_DEV:
         st.warning("🧪 **DEV environment** — dev Google Sheet and dev WhatsApp only. Nothing here reaches live data or real clients.")
     st.markdown(f"👋 **{user_info.get('name', username)}**")
     st.markdown(f"Role: **{user_info.get('role', '').title()}**")
-    st.divider()
-    if st.button("🏠 Dashboard",       use_container_width=True):
-        st.switch_page("app.py")
-    st.button("📝 New Entry", use_container_width=True, disabled=True, type="primary")
-    if st.button("🔍 Search Records",  use_container_width=True):
-        st.switch_page("pages/2_Search_Records.py")
-    if st.button("✏️ Edit Records",    use_container_width=True):
-        st.session_state["nav_page"] = "✏️ Edit Records"
-        st.switch_page("app.py")
-    st.divider()
+    if "ne_sidebar_nav" not in st.session_state:
+        st.session_state["ne_sidebar_nav"] = NAV_THIS_PAGE
+    st.radio("Navigation", nav_options(user_info), label_visibility="collapsed",
+             key="ne_sidebar_nav", on_change=_on_nav_change)
     if st.button("🚪 Logout", type="primary", use_container_width=True):
-        for _k in list(st.session_state.keys()):
-            del st.session_state[_k]
+        st.session_state["_logout_requested"] = True
         st.switch_page("app.py")
 
 # Send any WhatsApp messages queued while the service was down (throttled, never raises)
