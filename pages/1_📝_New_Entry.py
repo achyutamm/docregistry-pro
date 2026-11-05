@@ -260,19 +260,19 @@ auto_number_textarea("Party 1 Partners")
 # FORM ACTIONS
 # ============================================
 
-def build_preview_df(entry_id="PREVIEW", english=("", "", "")):
-    _p1_en, _partners_en, _p2_en = english
-    row = {
+def build_preview_df(entry_id, saved):
+    _p1_saved, _partners_saved = saved
+    return pd.DataFrame([{
         "Entry ID":          entry_id,
         "Document Type":     doc_type,
         "Appointment Date":  format_appt_date(entry_date),
         "Appointment Time":  str(entry_time),
         "Appt. Status":      appointment_status,
         "SRO":               sro,
-        "Party Name 1":      _p1_en or party_name_1,
+        "Party Name 1":      _p1_saved,
         "Party 1 Mobile No": party1_mobile,
-        "Party 1 Partners":  number_lines(party1_partners),
-        "Party Name 2":      _p2_en or (party_name_2 if party_name_2 != "-- Select --" else ""),
+        "Party 1 Partners":  _partners_saved,
+        "Party Name 2":      party_name_2 if party_name_2 != "-- Select --" else "",
         "GARVI App. No.":    garvi_appli_no,
         "Index App. No.":    index_appli_no,
         "Index No.":         index_no,
@@ -280,38 +280,37 @@ def build_preview_df(entry_id="PREVIEW", english=("", "", "")):
         "Title Status":      title_status,
         "Remark":            remark,
         "Created By":        username,
-    }
-    if _partners_en:
-        row["Party 1 Partners (English)"] = _partners_en
-    return pd.DataFrame([row])
+    }])
 
 if clear_btn:
     _clear_form()
     st.rerun()
 
-if preview_btn and not submit_btn:
-    st.info("👁️ Preview only – data is not saved to Google Sheets.")
-    _xl_on = gujarati_translit.settings()["enabled"]
-    st.dataframe(build_preview_df(english=tuple(
-        gujarati_translit.english_for(v) if _xl_on else ""
-        for v in (party_name_1.strip(), number_lines(party1_partners),
-                  party_name_2 if party_name_2 != "-- Select --" else ""))),
-        hide_index=True, use_container_width=True)
-
 _party2_value = party_name_2 if party_name_2 != "-- Select --" else ""
-# Gujarati names get an English copy: (label, Gujarati as typed) for Party 1, Partners, Party 2
+# Gujarati names get their English next to them: (label, as typed) for Party 1 and Partners
 _xlit = gujarati_translit.settings()
 _NAME_FIELDS = [
     ("Party Name 1",     party_name_1.strip()),
     ("Party 1 Partners", number_lines(party1_partners)),
-    ("Party Name 2",     _party2_value),
 ]
 
 
 def _auto_english():
     if not _xlit["enabled"]:
-        return ("", "", "")
+        return ("", "")
     return tuple(gujarati_translit.english_for(v) for _, v in _NAME_FIELDS)
+
+
+def _saved_names(english):
+    """What goes in the sheet for (Party 1, Partners): "Gujarati (English)" where there is English."""
+    return tuple(gujarati_translit.with_english(v, en) if en else v
+                 for (_, v), en in zip(_NAME_FIELDS, english))
+
+
+if preview_btn and not submit_btn:
+    st.info("👁️ Preview only – data is not saved to Google Sheets.")
+    st.dataframe(build_preview_df("PREVIEW", _saved_names(_auto_english())),
+                 hide_index=True, use_container_width=True)
 
 
 def _validation_error():
@@ -327,12 +326,10 @@ def _validation_error():
 
 
 def _save_entry(english):
-    """english: (Party 1, Partners, Party 2) in English - blank where the name is already English.
-    Party 1 / Party 2 are saved in English; partners keep the Gujarati list plus the English one."""
+    """english: (Party 1, Partners) in English - blank where the name is already English."""
     sro = st.session_state.get("ne_sro", "-- Select SRO --")
-    _en_p1, _en_partners, _en_p2 = english
-    _p1_saved = _en_p1 or party_name_1.strip()
-    _p2_saved = _en_p2 or _party2_value
+    _saved = _saved_names(english)
+    _p1_saved, _partners_saved = _saved
     try:
         sheets_manager = get_sheets_manager()
 
@@ -343,7 +340,7 @@ def _save_entry(english):
             sro=sro,
             party_name_1=_p1_saved,
             party1_mobile=party1_mobile.strip(),
-            party_name_2=_p2_saved,
+            party_name_2=_party2_value,
             garvi_application_id=garvi_appli_no.strip(),
             index_application_no=index_appli_no.strip(),
             index_no=index_no.strip(),
@@ -353,9 +350,8 @@ def _save_entry(english):
             entry_date=str(date.today()),
             entry_time=datetime.now().strftime("%H:%M:%S"),
             remark=remark.strip(),
-            party1_partners=number_lines(party1_partners),
+            party1_partners=_partners_saved,
             appointment_status=appointment_status,
-            partners_english=_en_partners,
         )
 
         if success:
@@ -367,10 +363,10 @@ def _save_entry(english):
                 "appointment_date":     format_appt_date(entry_date),
                 "appointment_time":     str(entry_time),
                 "sro":                  sro,
-                "party_name_1":         _p1_saved,
+                "party_name_1":         gujarati_translit.english_only(_p1_saved),
                 "party1_mobile":        party1_mobile.strip(),
-                "party1_partners":      _en_partners or number_lines(party1_partners),
-                "party_name_2":         _p2_saved,
+                "party1_partners":      gujarati_translit.english_only(_partners_saved),
+                "party_name_2":         _party2_value,
                 "garvi_application_id": garvi_appli_no.strip(),
                 "index_application_no": index_appli_no.strip(),
                 "index_no":             index_no.strip(),
@@ -404,7 +400,7 @@ def _save_entry(english):
                 "entry_id":   entry_id,
                 "created_by": username,
                 "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                "preview":    build_preview_df(entry_id, english).to_dict("records"),
+                "preview":    build_preview_df(entry_id, _saved).to_dict("records"),
                 "party1_wa":  _wa_status,
             }
             _clear_form()
@@ -429,9 +425,9 @@ if "_ne_xlit_review" in st.session_state:
     _suggested = st.session_state["_ne_xlit_review"]
     with st.container(border=True):
         st.markdown("#### 🔤 Check the English names")
-        st.caption("These names are in Gujarati. Party Name 1 / Party Name 2 are saved in English; "
-                   "partners keep the Gujarati list with the English list next to it. The English is "
-                   "used in WhatsApp messages. Correct it if needed, then save.")
+        st.caption("These names are in Gujarati. They are saved with the English next to them, like "
+                   "અવિનાશભાઈ પંચાલ (Avinashbhai Panchal). WhatsApp messages show the English. "
+                   "Correct it if needed, then save.")
         _checked = []
         for n, ((label, guj), en) in enumerate(zip(_NAME_FIELDS, _suggested)):
             if not en:
@@ -448,9 +444,12 @@ if "_ne_xlit_review" in st.session_state:
             if _err:
                 st.error(f"❌ {_err}")
             else:
-                _p1c, _partnersc, _p2c = _checked
-                # Partners keep the "1 Name" numbering, one per line, like the Gujarati list
-                _save_entry((" ".join(_p1c.split()), number_lines(_partnersc), " ".join(_p2c.split())))
+                _p1c, _partnersc = _checked
+                _partnersc = number_lines(_partnersc)
+                if _partnersc and len(_partnersc.splitlines()) != len(_NAME_FIELDS[1][1].splitlines()):
+                    st.error("❌ Party 1 Partners (English) needs one line for each partner.")
+                else:
+                    _save_entry((" ".join(_p1c.split()), _partnersc))
         if rc2.button("✖ Cancel", use_container_width=True):
             st.session_state.pop("_ne_xlit_review", None)
             st.rerun()

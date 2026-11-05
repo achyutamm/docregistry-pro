@@ -7,18 +7,17 @@ is dropped (ગણપતલાલ -> Ganpatlal, not Ganapatalala). Words with a 
 English spelling (મહેતા -> Mehta, મે. -> M/s) come from SPELLINGS plus the
 admin's own list in Configuration (transliteration.corrections).
 
-Party Name 1 and Party Name 2 are saved in English in their own columns.
-Party 1 Partners keeps the Gujarati list as typed, with the English list in
-"Party_Name 1 Partners (English)" - that is what WhatsApp messages use.
+Party Name 1 and Party 1 Partners keep both spellings in the same cell:
+"અવિનાશભાઈ પંચાલ (Avinashbhai Panchal)", and for partners, line by line,
+"1 રમેશ પટેલ (Ramesh Patel)". WhatsApp messages show only the English.
 """
 
 import re
 
 from utils.app_env import CONFIG_FILE
 
-# Sheet column -> its English column (Party 1 / Party 2 names are saved in English in place)
-PARTNERS_EN = "Party_Name 1 Partners (English)"
-ENGLISH_COLUMNS = {"Party_Name 1 Partners": PARTNERS_EN}
+# Sheet columns that can hold "Gujarati (English)"
+NAME_COLUMNS = ("Party_Name 1", "Party_Name 1 Partners")
 
 _CONS = {
     "ક": "k", "ખ": "kh", "ગ": "g", "ઘ": "gh", "ઙ": "n", "ચ": "ch", "છ": "chh", "જ": "j", "ઝ": "jh",
@@ -47,6 +46,8 @@ SPELLINGS = {
 }
 
 _GUJ = re.compile(r"[઀-૿]")
+_NUMBERED = re.compile(r"^(\d+\s+)(.*)$")          # "1 Name"
+_PAIR = re.compile(r"^(.*\S)\s*\(([^()]*)\)$")     # "Name (English)"
 
 
 def has_gujarati(text) -> bool:
@@ -149,9 +150,44 @@ def to_english(text, spellings: dict = None) -> str:
     return "".join(out)
 
 
+def _split_line(line):
+    """"1 રમેશ પટેલ (Ramesh Patel)" -> ("1 ", "રમેશ પટેલ", "Ramesh Patel"); English is "" if there is none."""
+    line = str(line or "").strip()
+    m = _NUMBERED.match(line)
+    num, body = (m.group(1), m.group(2)) if m else ("", line)
+    p = _PAIR.match(body)
+    if p and has_gujarati(p.group(1)) and p.group(2).strip() and not has_gujarati(p.group(2)):
+        return num, p.group(1), p.group(2).strip()
+    return num, body, ""
+
+
+def english_only(text) -> str:
+    """The English side of each "Gujarati (English)" line, keeping the numbering.
+    Lines without a saved English spelling come back as they are."""
+    parts = (_split_line(line) for line in str(text or "").splitlines())
+    return "\n".join(f"{num}{en or body}" for num, body, en in parts)
+
+
 def english_for(text) -> str:
     """English spelling when the text has Gujarati, else blank (= nothing to convert)."""
-    return to_english(text) if has_gujarati(text) else ""
+    return to_english(english_only(text)) if has_gujarati(text) else ""
+
+
+def with_english(text, english=None) -> str:
+    """Gujarati lines -> "Gujarati (English)", line by line, keeping the numbering; other lines
+    are unchanged. english: the spelling to use, with the same lines as text. Without it, a line
+    that already has its English keeps it (so a correction survives) and the rest are converted."""
+    typed = None if english is None else str(english).splitlines()
+    out = []
+    for i, line in enumerate(str(text or "").splitlines()):
+        num, body, en = _split_line(line)
+        if has_gujarati(body):
+            if typed is not None:
+                en = _split_line(typed[i])[1] if i < len(typed) else ""
+            elif not en:
+                en = to_english(body)
+        out.append(f"{num}{body} ({en})" if en else f"{num}{body}")
+    return "\n".join(out)
 
 
 def settings() -> dict:
@@ -166,11 +202,22 @@ def settings() -> dict:
 
 
 def use_english_names(record: dict) -> dict:
-    """Copy of a sheet-style record with the partners replaced by their English
-    list when one is saved - what WhatsApp messages should show."""
+    """Copy of a sheet-style record with the names in English only - what WhatsApp messages show."""
     rec = dict(record)
-    for col, en_col in ENGLISH_COLUMNS.items():
-        en = str(rec.get(en_col, "") or "").strip()
-        if en and en.lower() not in ("nan", "none"):
-            rec[col] = en
+    for col in NAME_COLUMNS:
+        if col in rec:
+            rec[col] = english_only(rec[col])
     return rec
+
+
+def use_english_changes(changes) -> list:
+    """Edit changes (field, old, new) for WhatsApp: names in English only. A name whose
+    English didn't change (only the Gujarati side was edited) is left out."""
+    out = []
+    for field, old, new in changes:
+        if field in NAME_COLUMNS:
+            old, new = english_only(old), english_only(new)
+            if old == new:
+                continue
+        out.append((field, old, new))
+    return out
