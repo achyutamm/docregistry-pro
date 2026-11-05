@@ -1398,7 +1398,6 @@ elif page == "✏️ Edit Records":
                                     "created_by":           str(edit_rec.get("Created_By", "")),
                                     "entry_date":           str(edit_rec.get("Entry_Date", "")),
                                     "entry_time":           str(edit_rec.get("Entry_Time", "")),
-                                    "confirmed_by":         username,
                                 }
                                 if e_date < date.today():
                                     # Party 1 can't act on a list of documents for a date already gone

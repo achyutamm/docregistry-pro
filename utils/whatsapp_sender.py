@@ -355,6 +355,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Doc Type:* {record.get('doc_type', '')}\n"
         f"*Appointment Date:* {record.get('appointment_date', '')}\n"
         f"*Appointment Time:* {record.get('appointment_time', '')}\n"
+        "*Appointment Status:* ✅ Confirmed\n"
         f"*SRO:* {record.get('sro', '')}\n"
         f"*Party Name 1:* {record.get('party_name_1', '')}\n"
         f"*Party 1 Mobile:* {record.get('party1_mobile', '')}\n"
@@ -368,7 +369,6 @@ def notify_appointment_confirmed(record: dict):
         f"*Title Status:* {record.get('title_status', '')}\n"
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
-        f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
         f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
     )
     _send_group_or_queue(text, record.get("entry_id", ""))
