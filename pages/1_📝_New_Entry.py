@@ -7,6 +7,7 @@ import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
 from utils.date_utils import format_appt_date, appt_time_input
 from utils.sheets_manager import number_lines, clean_lines
+from utils.doc_fields import hidden_fields
 from utils import gujarati_translit
 from utils.ui_helpers import auto_number_textarea, nav_options, sidebar_theme
 from utils import whatsapp_queue
@@ -167,6 +168,8 @@ with c3:
         )
 
 party2_is_bank = doc_type in BANK_PARTY2_DOC_TYPES
+# Fields this Document Type doesn't use (Configuration -> Document Types) stay blank
+_hidden = hidden_fields(config, doc_type)
 
 # ============================================
 # DATA ENTRY FORM
@@ -203,9 +206,11 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
         "Party 1 Partners",
         placeholder="Click here and type the first partner name - press Enter for the next partner (1, 2, 3... are added automatically)",
         key="party1_partners", height=100,
-    )
+    ) if "Party_Name 1 Partners" not in _hidden else ""
 
-    if party2_is_bank:
+    if "Party_Name 2" in _hidden:
+        party_name_2 = ""
+    elif party2_is_bank:
         party_name_2 = st.selectbox(
             "Party Name 2",
             ["-- Select --"] + party_name_2_options,
@@ -217,25 +222,32 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
             key="party_name_2_text"
         ).strip()
 
-    # Row 4: Application numbers
-    st.markdown("### 📂 Application Details")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        garvi_appli_no = st.text_input("GARVI Application No", placeholder="ex. 20261100843645", key="garvi_appli_no")
-    with c2:
-        index_appli_no = st.text_input("Index Application No", placeholder="ex. 80120260372851", key="index_appli_no")
-    with c3:
-        search_no = st.text_input("Search No", placeholder="ex. 202612030719415", key="search_no")
+    # Row 4: Application numbers, then Index no & Status - only the fields this type uses
+    _row1 = [f for f in ("Garvi_Application_ID", "Inedex_Application_No", "Search_No") if f not in _hidden]
+    _row2 = [f for f in ("Index_No", "Title_Status") if f not in _hidden]
+    if _row1 or _row2:
+        st.markdown("### 📂 Application Details")
+    _cols = {**(dict(zip(_row1, st.columns(len(_row1)))) if _row1 else {}),
+             **(dict(zip(_row2, st.columns(len(_row2)))) if _row2 else {})}
+    garvi_appli_no = _cols["Garvi_Application_ID"].text_input(
+        "GARVI Application No", placeholder="ex. 20261100843645", key="garvi_appli_no"
+    ) if "Garvi_Application_ID" in _cols else ""
+    index_appli_no = _cols["Inedex_Application_No"].text_input(
+        "Index Application No", placeholder="ex. 80120260372851", key="index_appli_no"
+    ) if "Inedex_Application_No" in _cols else ""
+    search_no = _cols["Search_No"].text_input(
+        "Search No", placeholder="ex. 202612030719415", key="search_no"
+    ) if "Search_No" in _cols else ""
+    index_no = _cols["Index_No"].text_input(
+        "Index No", placeholder="ex. 9729-2026", key="index_no"
+    ) if "Index_No" in _cols else ""
+    title_status = _cols["Title_Status"].selectbox(
+        "Title Status *", ["Pending", "In Progress", "Completed", "Rejected"], index=0, key="title_status"
+    ) if "Title_Status" in _cols else ""
 
-    # Row 5: Index no & Status
-    c1, c2 = st.columns(2)
-    with c1:
-        index_no = st.text_input("Index No", placeholder="ex. 9729-2026", key="index_no")
-    with c2:
-        status_options = ["Pending", "In Progress", "Completed", "Rejected"]
-        title_status = st.selectbox("Title Status *", status_options, index=0, key="title_status")
-
-    remark = st.text_area("Remark", placeholder="Any additional notes or remarks...", key="remark", height=80)
+    remark = st.text_area(
+        "Remark", placeholder="Any additional notes or remarks...", key="remark", height=80
+    ) if "Remark" not in _hidden else ""
 
     st.markdown("---")
     b1, b2, b3 = st.columns([2, 1, 1])
@@ -419,9 +431,9 @@ with st.expander("ℹ️ Form Instructions"):
     - Tentative Date & Time
     - SRO
     - Party Name 1
-    - Title Status
+    - Title Status (when shown)
 
-    **Optional fields**:
+    **Optional fields** (the form shows the ones this Document Type uses):
     - Party 1 Mobile No
     - Party Name 2 (select from dropdown)
     - GARVI Application No

@@ -6,6 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from utils import phone_utils
+from utils.doc_fields import hidden_fields
 from utils.app_env import CONFIG_FILE
 
 load_dotenv()
@@ -331,6 +332,35 @@ def test_recipients(p1_cfg: dict) -> list:
     return out
 
 
+# Labels the group messages use for the optional form fields
+_MESSAGE_LABELS = {
+    "Party_Name 2":          ("Party Name 2", "Party 2"),
+    "Garvi_Application_ID":  ("GARVI App ID",),
+    "Inedex_Application_No": ("Index App No",),
+    "Search_No":             ("Search No",),
+    "Index_No":              ("Index No",),
+    "Title_Status":          ("Title Status", "Status"),
+    "Remark":                ("Remark",),
+}
+
+
+def _drop_hidden_fields(text: str, doc_type) -> str:
+    """Leave out empty lines for fields this Document Type doesn't use.
+    A hidden field that does hold a value (older records) stays in the message."""
+    labels = [l for f in hidden_fields(_full_config(), doc_type) for l in _MESSAGE_LABELS.get(f, ())]
+    if not labels:
+        return text
+    empty = re.compile(r"\*(?:" + "|".join(map(re.escape, labels)) + r"):\*[ ]*(?:—[ ]*)?(?=  |$)")
+    lines = []
+    for line in text.split("\n"):
+        kept = empty.sub("", line)
+        if kept == line:
+            lines.append(line)
+        elif kept.strip():
+            lines.append(kept.strip())
+    return "\n".join(lines)
+
+
 def _send_group_or_queue(text: str, entry_id: str = ""):
     """Send to the group; if WhatsApp is down, keep the message and send it when it's back."""
     try:
@@ -372,7 +402,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
         f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
     )
-    _send_group_or_queue(text, record.get("entry_id", ""))
+    _send_group_or_queue(_drop_hidden_fields(text, record.get("doc_type")), record.get("entry_id", ""))
 
 
 def notify_tentative_overdue(records: list, total_tentative: int):
@@ -436,7 +466,7 @@ def notify_today_appointments(appointments: list):
             f"*Status:* {appt.get('Title_Status', '')}"
         )
         try:
-            send_whatsapp_message(text)
+            send_whatsapp_message(_drop_hidden_fields(text, appt.get("Doc_Type")))
         except Exception:
             pass
 
@@ -479,7 +509,7 @@ def notify_tomorrow_appointments(appointments: list, tomorrow_str: str):
             f"*Status:* {appt.get('Title_Status', '')}"
         )
         try:
-            send_whatsapp_message(text)
+            send_whatsapp_message(_drop_hidden_fields(text, appt.get("Doc_Type")))
         except Exception:
             pass
 
@@ -682,6 +712,6 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         f"*Remark:* {record.get('Remark', '') or '—'}"
     )
     try:
-        send_whatsapp_message(body)
+        send_whatsapp_message(_drop_hidden_fields(body, record.get("Doc_Type")))
     except Exception:
         pass

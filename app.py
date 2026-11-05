@@ -39,13 +39,14 @@ from utils.config_manager import (
     set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
     set_whatsapp_contact_numbers,
     set_party1_checklist_enabled, set_party1_checklist_message, set_party1_checklist_items,
-    set_party1_checklist_test_mode, set_transliteration,
+    set_party1_checklist_test_mode, set_transliteration, set_doc_type_hidden_fields,
 )
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
+from utils.doc_fields import OPTIONAL_FIELDS, hidden_fields
 from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
@@ -458,7 +459,7 @@ if page == "🏠 Dashboard":
     col2.metric("⏳ Pending",     len(filtered_df[filtered_df["Title_Status"].str.lower() == "pending"]))
     col3.metric("🔄 In Progress", len(filtered_df[filtered_df["Title_Status"].str.lower() == "in progress"]))
     col4.metric("✅ Completed",   len(filtered_df[filtered_df["Title_Status"].str.lower() == "completed"]))
-    st.bar_chart(filtered_df["Title_Status"].value_counts())
+    st.bar_chart(filtered_df["Title_Status"].replace("", "No Title Status").value_counts())
 
     # =========================================================
     # ENHANCEMENT 1 — PENDING RECORDS ALERT
@@ -555,7 +556,8 @@ if page == "🏠 Dashboard":
 
             # Bar chart: records per day broken down by status
             trend = (
-                sel_month_df.groupby(["_day", "Title_Status"])
+                sel_month_df.assign(Title_Status=sel_month_df["Title_Status"].replace("", "No Title Status"))
+                .groupby(["_day", "Title_Status"])
                 .size()
                 .reset_index(name="Count")
                 .pivot(index="_day", columns="Title_Status", values="Count")
@@ -1095,7 +1097,13 @@ elif page == "✏️ Edit Records":
         def _on_edit_district_change():
             st.session_state["e_sro"] = None
 
-        ec1, ec2 = st.columns(2)
+        ec0, ec1, ec2 = st.columns(3)
+        with ec0:
+            e_doc_type = st.selectbox(
+                "Document Type *", DOCUMENT_TYPES,
+                index=safe_index(DOCUMENT_TYPES, edit_rec.get("Doc_Type", "")),
+                key="e_doc_type"
+            )
         with ec1:
             e_district = st.selectbox(
                 "District *",
@@ -1114,16 +1122,17 @@ elif page == "✏️ Edit Records":
                 key="e_sro"
             )
 
+        # A field this Document Type doesn't use is hidden, unless the record already holds
+        # a value there (older records must stay editable, e.g. to complete a Title Status).
+        _e_hidden = hidden_fields(config, e_doc_type)
+
+        def _e_show(field):
+            return field not in _e_hidden or bool(str(edit_rec.get(field, "") or "").strip())
+
         with st.form("edit_form"):
             st.markdown("### 📋 Entry Details")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
-                e_doc_type = st.selectbox(
-                    "Document Type *", DOCUMENT_TYPES,
-                    index=safe_index(DOCUMENT_TYPES, edit_rec.get("Doc_Type", "")),
-                    key="e_doc_type"
-                )
-            with c2:
                 e_date = st.date_input(
                     "Date *",
                     value=parse_appt_date(edit_rec.get("Appointment Date")) or date.today(),
@@ -1136,10 +1145,9 @@ elif page == "✏️ Edit Records":
                 _e_time_val = time(int(t_parts[0]), int(t_parts[1]))
             except Exception:
                 _e_time_val = time(10, 0)
-            c1, c2 = st.columns(2)
-            with c1:
-                e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
             with c2:
+                e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
+            with c3:
                 st.text_input("Appointment Status",
                               value="⏳ Tentative" if _rec_tentative else "✅ Confirmed", disabled=True)
 
@@ -1169,53 +1177,50 @@ elif page == "✏️ Edit Records":
                 placeholder="Click here and type the first partner name - press Enter for the next partner (1, 2, 3... are added automatically)",
                 key="e_partners",
                 height=100
-            )
+            ) if _e_show("Party_Name 1 Partners") else ""
 
             p2_opts = ["-- Select --"] + PARTY_NAME_2_OPTIONS
             e_party2 = st.selectbox(
                 "Party Name 2", p2_opts,
                 index=safe_index(p2_opts, edit_rec.get("Party_Name 2", "-- Select --")),
                 key="e_party2"
-            )
+            ) if _e_show("Party_Name 2") else "-- Select --"
 
-            st.markdown("### 📂 Application Details")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                e_garvi = st.text_input(
-                    "GARVI App. No.",
-                    value=str(edit_rec.get("Garvi_Application_ID", "")),
-                    placeholder="ex. 20261100843645",
-                    key="e_garvi"
-                )
-            with c2:
-                e_index_appli = st.text_input(
-                    "Index App. No.",
-                    value=str(edit_rec.get("Inedex_Application_No", "")),
-                    placeholder="ex. 80120260372851",
-                    key="e_index_appli"
-                )
-            with c3:
-                e_search = st.text_input(
-                    "Search No.",
-                    value=str(edit_rec.get("Search_No", "")),
-                    placeholder="ex. 202612030719415",
-                    key="e_search"
-                )
-
-            c1, c2 = st.columns(2)
-            with c1:
-                e_index_no = st.text_input(
-                    "Index No.",
-                    value=str(edit_rec.get("Index_No", "")),
-                    placeholder="ex. 9729-2026",
-                    key="e_index_no"
-                )
-            with c2:
-                e_status = st.selectbox(
-                    "Title Status *", STATUS_OPTIONS,
-                    index=safe_index(STATUS_OPTIONS, edit_rec.get("Title_Status", "Pending")),
-                    key="e_status"
-                )
+            _e_row1 = [f for f in ("Garvi_Application_ID", "Inedex_Application_No", "Search_No") if _e_show(f)]
+            _e_row2 = [f for f in ("Index_No", "Title_Status") if _e_show(f)]
+            if _e_row1 or _e_row2:
+                st.markdown("### 📂 Application Details")
+            _e_cols = {**(dict(zip(_e_row1, st.columns(len(_e_row1)))) if _e_row1 else {}),
+                       **(dict(zip(_e_row2, st.columns(len(_e_row2)))) if _e_row2 else {})}
+            e_garvi = _e_cols["Garvi_Application_ID"].text_input(
+                "GARVI App. No.",
+                value=str(edit_rec.get("Garvi_Application_ID", "")),
+                placeholder="ex. 20261100843645",
+                key="e_garvi"
+            ) if "Garvi_Application_ID" in _e_cols else ""
+            e_index_appli = _e_cols["Inedex_Application_No"].text_input(
+                "Index App. No.",
+                value=str(edit_rec.get("Inedex_Application_No", "")),
+                placeholder="ex. 80120260372851",
+                key="e_index_appli"
+            ) if "Inedex_Application_No" in _e_cols else ""
+            e_search = _e_cols["Search_No"].text_input(
+                "Search No.",
+                value=str(edit_rec.get("Search_No", "")),
+                placeholder="ex. 202612030719415",
+                key="e_search"
+            ) if "Search_No" in _e_cols else ""
+            e_index_no = _e_cols["Index_No"].text_input(
+                "Index No.",
+                value=str(edit_rec.get("Index_No", "")),
+                placeholder="ex. 9729-2026",
+                key="e_index_no"
+            ) if "Index_No" in _e_cols else ""
+            e_status = _e_cols["Title_Status"].selectbox(
+                "Title Status *", STATUS_OPTIONS,
+                index=safe_index(STATUS_OPTIONS, edit_rec.get("Title_Status", "Pending")),
+                key="e_status"
+            ) if "Title_Status" in _e_cols else ""
 
             e_remark = st.text_area(
                 "Remark",
@@ -1223,7 +1228,7 @@ elif page == "✏️ Edit Records":
                 placeholder="Any additional notes or remarks...",
                 key="e_remark",
                 height=80
-            )
+            ) if _e_show("Remark") else ""
 
             st.markdown("---")
             confirm_btn = False
@@ -1903,6 +1908,32 @@ elif page == "⚙️ Configuration":
             "Controls the 'Document Type' dropdown on the New Entry form.",
             "doctype", "Document Types"
         )
+
+        st.divider()
+        st.subheader("Fields on the Form")
+        st.caption(
+            "Tick the fields each Document Type uses in New Entry and Edit Records; untick to remove one. "
+            "A removed field is saved blank. Older records that already hold a value there still show it in "
+            "Edit Records. Document Type, District, SRO, Date, Time, Party Name 1 and Party 1 Mobile No are "
+            "always on the form."
+        )
+        _ff_rows = pd.DataFrame([
+            {"Document Type": _dt, **{_lbl: _f not in hidden_fields(config, _dt)
+                                      for _f, _lbl in OPTIONAL_FIELDS.items()}}
+            for _dt in DOCUMENT_TYPES
+        ])
+        _ff_edit = st.data_editor(
+            _ff_rows, use_container_width=True, hide_index=True, disabled=["Document Type"],
+            key=f"cfg_ff_rows_{st.session_state['cfg_widget_key']}",
+        )
+        if st.button("💾 Save", key="cfg_ff_save", type="primary"):
+            set_doc_type_hidden_fields({
+                _r["Document Type"]: [_f for _f, _lbl in OPTIONAL_FIELDS.items() if not _r[_lbl]]
+                for _r in _ff_edit.to_dict("records")
+            })
+            st.session_state["cfg_flash"] = ("success", "✅ Form fields saved.")
+            st.session_state["cfg_widget_key"] += 1
+            st.rerun()
 
     elif _active_cfg_tab == "party2":
         st.subheader("Party Name 2 (Banks / Co-operatives)")

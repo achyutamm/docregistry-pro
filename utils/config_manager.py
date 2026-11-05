@@ -256,6 +256,19 @@ def set_transliteration(enabled: bool, review_before_save: bool, corrections):
     save_config(cfg)
 
 
+def set_doc_type_hidden_fields(hidden: dict):
+    """hidden: {document type: [sheet columns not shown on the forms]}.
+    Types not in the map keep their setting; an empty list shows every field."""
+    cfg = load_config()
+    rules = cfg.setdefault("doc_type_hidden_fields", {})
+    for doc_type, fields in hidden.items():
+        if fields:
+            rules[doc_type] = list(fields)
+        else:
+            rules.pop(doc_type, None)
+    save_config(cfg)
+
+
 def set_party1_checklist_message(message: str, partners_heading: str = None):
     """Message template shared by every document type; {checklist} becomes the numbered list.
     partners_heading is the bold title {partners} puts above the partner names."""
