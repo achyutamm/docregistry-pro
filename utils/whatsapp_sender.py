@@ -369,6 +369,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Title Status:* {record.get('title_status', '')}\n"
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
+        f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
         f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
     )
     _send_group_or_queue(text, record.get("entry_id", ""))
