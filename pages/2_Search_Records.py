@@ -4,7 +4,7 @@
 
 import streamlit as st
 from utils.ui_helpers import sidebar_theme
-from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_history_cached
+from utils.sheets_cache import get_sheets_manager, get_every_record_cached, get_history_cached
 from utils.date_utils import parse_appt_date_series
 import pandas as pd
 import yaml
@@ -119,7 +119,7 @@ with st.sidebar:
 # ============================================
 try:
     sheets_manager = get_sheets_manager()
-    df = get_all_records_cached(sheets_manager)
+    df = get_every_record_cached(sheets_manager)
 except Exception as e:
     st.error(f"❌ Failed to load records: {e}")
     st.stop()

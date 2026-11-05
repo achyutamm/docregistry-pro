@@ -6,18 +6,23 @@ Pending status, with Days Pending = today - Entry_Date. Only messages the
 WhatsApp/Telegram group when at least one record has been pending for over
 30 days, to avoid noise on quiet weeks.
 
-Runs via GitHub Actions on a weekly schedule.
+With --tentative it reminds the group instead about records still in the
+Tentative Records tab more than 15 days after they were entered.
+
+Runs via GitHub Actions: weekly for pending records, on the 1st and 16th of
+each month for tentative records.
 
 Usage:
     python pending_records_notifier.py
+    python pending_records_notifier.py --tentative
 """
 
 import sys
 import time
 import pandas as pd
 
-from utils.sheets_manager import SheetsManager, is_tentative
-from utils.notification_router import notify_pending_records_alert
+from utils.sheets_manager import SheetsManager, with_days_tentative, TENTATIVE_ALERT_DAYS
+from utils.notification_router import notify_pending_records_alert, notify_tentative_overdue
 from utils.gujarati_translit import use_english_names
 
 MAX_RETRIES = 3
@@ -30,11 +35,7 @@ def run():
     sm = SheetsManager()
     df = sm.get_all_records()
 
-    pending = df["Title_Status"].str.lower() == "pending"
-    # Tentative appointments (placeholder date) are not real pending work yet
-    if "Appointment_Status" in df.columns:
-        pending &= ~df["Appointment_Status"].map(is_tentative)
-    pending_all = df[pending].copy()
+    pending_all = df[df["Title_Status"].str.lower() == "pending"].copy()
     if pending_all.empty:
         print("No records are currently in Pending status. Nothing to send.")
         return
@@ -61,11 +62,30 @@ def run():
     print("Alert sent.")
 
 
+def run_tentative():
+    df = SheetsManager().get_tentative_records()
+    if df.empty:
+        print("No tentative records. Nothing to send.")
+        return
+
+    df = with_days_tentative(df)
+    overdue = df[df["Days Tentative"] > TENTATIVE_ALERT_DAYS]
+    print(f"{len(overdue)} record(s) tentative for over {TENTATIVE_ALERT_DAYS} days "
+          f"— {len(df)} tentative total.")
+    if overdue.empty:
+        print("Nothing over the limit — no reminder sent.")
+        return
+
+    notify_tentative_overdue([use_english_names(r) for r in overdue.to_dict("records")], len(df))
+    print("Reminder sent.")
+
+
 def main():
+    job = run_tentative if "--tentative" in sys.argv[1:] else run
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            run()
+            job()
             return
         except Exception as e:
             last_error = e

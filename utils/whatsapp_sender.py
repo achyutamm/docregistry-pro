@@ -331,21 +331,30 @@ def test_recipients(p1_cfg: dict) -> list:
     return out
 
 
-def notify_new_entry(record: dict):
+def _send_group_or_queue(text: str, entry_id: str = ""):
+    """Send to the group; if WhatsApp is down, keep the message and send it when it's back."""
+    try:
+        send_whatsapp_message(text)
+    except WhatsAppUnavailable as ex:
+        try:
+            from utils import whatsapp_queue
+            whatsapp_queue.enqueue(whatsapp_queue.KIND_GROUP, "", text, entry_id, str(ex))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def notify_appointment_confirmed(record: dict):
     if not _enabled():
         return
 
-    tentative = str(record.get("appointment_status", "")).strip().lower() == "tentative"
     text = (
-        "📝 *New Entry — DocRegistry Pro*\n\n"
-        + ("⏳ *TENTATIVE appointment — date not final yet.* "
-           "The Party 1 checklist will be sent once the date is confirmed.\n\n" if tentative else "")
-        + f"*Entry ID:* {record.get('entry_id', '')}\n"
+        "✅ *Appointment Confirmed — DocRegistry Pro*\n\n"
+        f"*Entry ID:* {record.get('entry_id', '')}\n"
         f"*Doc Type:* {record.get('doc_type', '')}\n"
-        f"*Appointment Date:* {record.get('appointment_date', '')}"
-        + (" ⏳ _(tentative)_" if tentative else "") + "\n"
+        f"*Appointment Date:* {record.get('appointment_date', '')}\n"
         f"*Appointment Time:* {record.get('appointment_time', '')}\n"
-        f"*Appointment Status:* {'⏳ Tentative' if tentative else '✅ Confirmed'}\n"
         f"*SRO:* {record.get('sro', '')}\n"
         f"*Party Name 1:* {record.get('party_name_1', '')}\n"
         f"*Party 1 Mobile:* {record.get('party1_mobile', '')}\n"
@@ -359,20 +368,32 @@ def notify_new_entry(record: dict):
         f"*Title Status:* {record.get('title_status', '')}\n"
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
+        f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
         f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
     )
+    _send_group_or_queue(text, record.get("entry_id", ""))
 
-    try:
-        send_whatsapp_message(text)
-    except WhatsAppUnavailable as ex:
-        # Keep the group announcement and send it when WhatsApp is back
-        try:
-            from utils import whatsapp_queue
-            whatsapp_queue.enqueue(whatsapp_queue.KIND_GROUP, "", text, record.get("entry_id", ""), str(ex))
-        except Exception:
-            pass
-    except Exception:
-        pass
+
+def notify_tentative_overdue(records: list, total_tentative: int):
+    """One message listing the records still tentative past the client's 15-day limit."""
+    if not _enabled():
+        return
+    lines = [
+        f"{n}. *{r.get('Party_Name 1', '')}* — {r.get('Doc_Type', '')}\n"
+        f"    *Entry ID:* {r.get('Entry_ID', '')}\n"
+        f"    *Mobile:* {r.get('Party_Name 1 Mobile_No', '') or '—'}\n"
+        f"    *SRO:* {r.get('SRO', '')}\n"
+        f"    *Tentative Date:* {r.get('Appointment Date', '')}\n"
+        f"    *Entry Date:* {r.get('Entry_Date', '')} ({r.get('Days Tentative', '')} days ago)"
+        for n, r in enumerate(records, 1)
+    ]
+    _send_group_or_queue(
+        "⏳ *Tentative Records Reminder — DocRegistry Pro*\n\n"
+        f"{len(records)} record(s) still tentative after more than 15 days "
+        f"({total_tentative} tentative in total).\n\n"
+        + "\n\n".join(lines)
+        + "\n\nPlease fix the final date and press ✅ Confirm Appointment in Edit Records 🙏"
+    )
 
 
 def notify_today_appointments(appointments: list):
@@ -637,16 +658,9 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         change_lines.append(f"  • *{label}:* {old or '—'} → {new or '—'}")
     changes_text = "\n".join(change_lines)
 
-    # Tentative → Confirmed gets its own headline: the real date is now fixed
-    confirmed_now = any(f == "Appointment_Status" and str(new).strip().lower() == "confirmed"
-                        for f, old, new in changes)
-    tentative = str(record.get("Appointment_Status", "")).strip().lower() == "tentative"
-
     # Full record snapshot
     body = (
-        (f"✅ *APPOINTMENT CONFIRMED* — {record.get('Appointment Date', '')} "
-         f"{record.get('Appointment Time', '')}\n\n" if confirmed_now else "")
-        + f"✏️ *Record Updated — DocRegistry Pro*\n\n"
+        f"✏️ *Record Updated — DocRegistry Pro*\n\n"
         f"*Updated By:* {updated_by}\n"
         f"*Entry ID:* {entry_id}\n\n"
         f"*Changes ({len(changes)} field(s)):*\n"
@@ -664,7 +678,6 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         f"*Index No:* {record.get('Index_No', '')}  "
         f"*Search No:* {record.get('Search_No', '')}\n"
         f"*Title Status:* {record.get('Title_Status', '')}\n"
-        f"*Appointment Status:* {'⏳ Tentative' if tentative else '✅ Confirmed'}\n"
         f"*Remark:* {record.get('Remark', '') or '—'}"
     )
     try:

@@ -22,14 +22,14 @@ from utils.simple_auth import SimpleAuth
 from utils.password_utils import generate_temp_password
 from utils.sheets_cache import (
     get_sheets_manager,
-    get_all_records_cached, clear_records_cache,
+    get_all_records_cached, get_tentative_records_cached, get_every_record_cached, clear_records_cache,
     get_history_cached, clear_history_cache,
     get_user_requests_cached, clear_user_requests_cache,
     get_user_activity_log_cached, clear_user_activity_log_cache,
 )
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
 from utils.notification_router import (
-    notify_new_entry, notify_today_appointments,
+    notify_appointment_confirmed, notify_today_appointments,
     notify_user_approved, notify_user_requested, notify_user_rejected,
     notify_role_changed, notify_config_access_changed, notify_user_deleted,
     notify_record_updated, send_party1_checklist,
@@ -46,7 +46,7 @@ import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
-from utils.sheets_manager import number_lines, is_tentative
+from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
@@ -128,7 +128,7 @@ STATUS_OPTIONS       = ["Pending", "In Progress", "Completed", "Rejected"]
 # =====================================================
 # AUTH
 # =====================================================
-auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=2))
+auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=3))
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
@@ -317,10 +317,30 @@ if page == "🏠 Dashboard":
     st.title("🏛️ Dashboard")
     st.markdown(f"👋 **Welcome back, {user_info['name']}!**  \nHere's a quick overview of appointments and recent registry activity.")
 
+    # Tentative records — waiting for their final date
+    st.divider()
+    _tent_df = get_tentative_records_cached(sheets_manager)
+    st.subheader(f"⏳ Tentative Records — Final Date Needed ({len(_tent_df)})")
+    if _tent_df.empty:
+        st.success("✅ No tentative records. Every entry has its final date.")
+    else:
+        _tent_df = with_days_tentative(_tent_df)
+        _tent_over = int((_tent_df["Days Tentative"] > TENTATIVE_ALERT_DAYS).sum())
+        if _tent_over:
+            st.error(f"🚨 {_tent_over} record(s) tentative for more than {TENTATIVE_ALERT_DAYS} days. "
+                     "Please fix the final date.")
+        st.caption("Oldest first. When the final date is fixed, open the record in ✏️ Edit Records, set the "
+                   "date and time and press ✅ Confirm Appointment: it moves to the main sheet, and Party 1 "
+                   "and the group get their messages.")
+        _tent_cols = [c for c in ["Days Tentative", "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+                                  "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
+                                  "Title_Status", "Created_By", "Entry_Date", "Remark"] if c in _tent_df.columns]
+        st.dataframe(display_df(_tent_df[_tent_cols]), use_container_width=True, hide_index=True)
+
     df = get_all_records_cached(sheets_manager)
 
     if df.empty:
-        st.info("No records available yet.")
+        st.info("No confirmed records yet.")
         st.stop()
 
     # Parsed Appointment Date for all date comparisons/sorting below — the column is
@@ -328,9 +348,6 @@ if page == "🏠 Dashboard":
     _appt_parsed = parse_appt_date_series(df["Appointment Date"])
 
     _today_ts = pd.Timestamp(date.today())
-    # Tentative = placeholder date, not a real appointment yet
-    _tent_mask = (df["Appointment_Status"].map(is_tentative) if "Appointment_Status" in df.columns
-                  else pd.Series(False, index=df.index))
 
     # Today's Appointments
     st.divider()
@@ -356,11 +373,9 @@ if page == "🏠 Dashboard":
     with col1:
         st.subheader("📆 Upcoming Appointments (Next 7 Days)")
     with col2:
-        # Only real (confirmed) appointments; tentative ones have their own list below
         upcoming_df = df[
             (_appt_parsed > _today_ts) &
-            (_appt_parsed <= (_today_ts + timedelta(days=7))) &
-            ~_tent_mask
+            (_appt_parsed <= (_today_ts + timedelta(days=7)))
         ]
         st.download_button("⬇️", upcoming_df.to_csv(index=False),
                            file_name="upcoming_appointments_7_days.csv",
@@ -374,20 +389,6 @@ if page == "🏠 Dashboard":
         )
     else:
         st.info("No upcoming appointments in the next 7 days.")
-
-    # Tentative appointments — placeholder dates still waiting for the real one
-    if _tent_mask.any():
-        st.divider()
-        st.subheader(f"⏳ Tentative Appointments to Confirm ({int(_tent_mask.sum())})")
-        st.caption("These dates are placeholders. When the real date is fixed, open the record in "
-                   "✏️ Edit Records, set the date and change Appointment Status to Confirmed — "
-                   "that sends the Party 1 checklist. Daily reminders skip tentative entries.")
-        _tent_cols = [c for c in ["Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "SRO",
-                                  "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
-                                  "Created_By", "Entry_Date", "Remark"] if c in df.columns]
-        _tent_df = (df[_tent_mask].assign(_s=_appt_parsed[_tent_mask])
-                    .sort_values(["_s", "Appointment Time"])[_tent_cols])
-        st.dataframe(display_df(_tent_df), use_container_width=True, hide_index=True)
 
     # Record View
     st.divider()
@@ -465,9 +466,9 @@ if page == "🏠 Dashboard":
     st.divider()
     st.subheader("⚠️ Pending Records Alert")
     st.caption("All confirmed records currently in Pending status, sorted by oldest first "
-               "(tentative appointments are listed separately above).")
+               "(tentative records are listed separately above).")
 
-    pending_all = df[(df["Title_Status"].str.lower() == "pending") & ~_tent_mask].copy()
+    pending_all = df[df["Title_Status"].str.lower() == "pending"].copy()
     pending_all["Entry_Date_dt"] = pd.to_datetime(pending_all["Entry_Date"], errors="coerce")
     today_ts = pd.Timestamp.today().normalize()
     pending_all["Days Pending"] = (today_ts - pending_all["Entry_Date_dt"]).dt.days
@@ -662,7 +663,7 @@ elif page == "📅 Calendar":
     st.title("📅 Calendar")
     st.caption("Appointments by date from the registry records. Switch between Month, Week and Day, "
                "and click any day to see its full appointments.")
-    render_calendar(get_all_records_cached(sheets_manager), username=username, display_fn=display_df)
+    render_calendar(get_every_record_cached(sheets_manager), username=username, display_fn=display_df)
 
 # =====================================================
 # NEW ENTRY
@@ -679,7 +680,7 @@ elif page == "🔍 Search Records":
     st.markdown("Search and filter registry entries from the database")
     st.divider()
 
-    df = get_all_records_cached(sheets_manager)
+    df = get_every_record_cached(sheets_manager)
 
     if df.empty:
         st.info("No records found in the database.")
@@ -880,7 +881,7 @@ elif page == "✏️ Edit Records":
             st.warning(msg)
         else:
             st.info(msg)
-    # Party 1 checklist sent because a Tentative appointment was just Confirmed
+    # Party 1 checklist sent because a tentative record was just confirmed
     if "_edit_checklist_result" in st.session_state:
         _cl_state, _cl_detail = st.session_state.pop("_edit_checklist_result")
         if _cl_state == "sent":
@@ -892,7 +893,7 @@ elif page == "✏️ Edit Records":
         elif _cl_detail:
             st.info(f"📱 WhatsApp to Party 1 not sent: {_cl_detail}")
 
-    df = get_all_records_cached(sheets_manager)
+    df = get_every_record_cached(sheets_manager)
 
     # Counter-based key so we can reset the widget after save
     if "edit_form_key" not in st.session_state:
@@ -915,7 +916,6 @@ elif page == "✏️ Edit Records":
         "Party_Name 1 Partners":  "Party 1 Partners",
         "Appointment_Status":     "Appointment Status",
     }
-    APPT_STATUS_OPTIONS = ["Confirmed", "Tentative"]
 
     def _appt_status(v):
         """Sheet value → Confirmed / Tentative (blank on older rows = Confirmed)."""
@@ -996,6 +996,7 @@ elif page == "✏️ Edit Records":
                     " · ".join(x for x in (
                         str(r.get("Entry_ID", "")).replace(",", ""), str(r.get("Party_Name 1", "")),
                         str(r.get("Doc_Type", "")), str(r.get("Appointment Date", "")), str(r.get("SRO", "")),
+                        "⏳ Tentative" if is_tentative(r.get("Appointment_Status")) else "",
                     ) if x): i
                     for i, r in match.iterrows()
                 }
@@ -1037,11 +1038,12 @@ elif page == "✏️ Edit Records":
     if edit_rec is not None:
         party1_val = edit_rec.get("Party_Name 1", "")
         party2_val = edit_rec.get("Party_Name 2", "") or "—"
-        if is_tentative(edit_rec.get("Appointment_Status", "")):
+        _rec_tentative = is_tentative(edit_rec.get("Appointment_Status", ""))
+        if _rec_tentative:
             st.warning(
-                "⏳ **Tentative appointment** — the date is a placeholder. Once the real date is fixed, "
-                "set it below and change **Appointment Status** to **Confirmed**: the Party 1 "
-                "checklist is sent then."
+                "⏳ **Tentative record** — once the final date is fixed, set the date and time below and "
+                "press **✅ Confirm Appointment**. The record then moves to the main sheet, and Party 1 "
+                "and the group get their WhatsApp messages. Saving without confirming sends nothing."
             )
         st.success(
             f"Record loaded — "
@@ -1138,13 +1140,8 @@ elif page == "✏️ Edit Records":
             with c1:
                 e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
             with c2:
-                e_appt_status = st.selectbox(
-                    "Appointment Status *", APPT_STATUS_OPTIONS,
-                    index=safe_index(APPT_STATUS_OPTIONS, _appt_status(edit_rec.get("Appointment_Status", ""))),
-                    key="e_appt_status",
-                    help="Tentative = the date is only a placeholder. Changing it to Confirmed "
-                         "sends the Party 1 checklist with the date above.",
-                )
+                st.text_input("Appointment Status",
+                              value="⏳ Tentative" if _rec_tentative else "✅ Confirmed", disabled=True)
 
             st.markdown("### 👥 Party Information")
             c1, c2 = st.columns(2)
@@ -1229,7 +1226,14 @@ elif page == "✏️ Edit Records":
             )
 
             st.markdown("---")
-            save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+            confirm_btn = False
+            if _rec_tentative:
+                _b1, _b2 = st.columns(2)
+                save_btn = _b1.form_submit_button("💾 Save (stays Tentative)", use_container_width=True)
+                confirm_btn = _b2.form_submit_button("✅ Confirm Appointment & Send WhatsApp",
+                                                     type="primary", use_container_width=True)
+            else:
+                save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
 
         # Live 1, 2, 3… numbering in the Party 1 Partners box while typing
         auto_number_textarea("Party 1 Partners")
@@ -1245,13 +1249,16 @@ elif page == "✏️ Edit Records":
                 st.session_state["edit_form_key"] += 1
                 st.rerun()
 
-        if save_btn:
+        if save_btn or confirm_btn:
+            e_appt_status = "Tentative" if _rec_tentative and not confirm_btn else "Confirmed"
             e_district = st.session_state.get("e_district", "")
             e_sro      = st.session_state.get("e_sro", "")
             if not e_party1.strip():
                 st.error("❌ Party Name 1 is required.")
             elif phone_utils.validate(e_party1_cc, e_party1_number):
                 st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(e_party1_cc, e_party1_number)}")
+            elif confirm_btn and e_date < date.today():
+                st.error("❌ The date is in the past. Set the final appointment date, then confirm.")
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
@@ -1261,7 +1268,8 @@ elif page == "✏️ Edit Records":
                         e_party1   = gujarati_translit.with_english(e_party1.strip())
                         e_partners = gujarati_translit.with_english(number_lines(e_partners))
 
-                    ok = sheets_manager.update_record(
+                    _write = sheets_manager.confirm_record if confirm_btn else sheets_manager.update_record
+                    ok = _write(
                         entry_id=real_entry_id,
                         doc_type=e_doc_type,
                         appointment_date=format_appt_date(e_date),
@@ -1277,7 +1285,6 @@ elif page == "✏️ Edit Records":
                         title_status=e_status,
                         remark=e_remark.strip(),
                         party1_partners=number_lines(e_partners),
-                        appointment_status=e_appt_status,
                     )
 
                     if ok:
@@ -1304,9 +1311,6 @@ elif page == "✏️ Edit Records":
                             ("Party_Name 1 Partners",  _snap.get("Party_Name 1 Partners",  str(edit_rec.get("Party_Name 1 Partners", "") or "")),  number_lines(e_partners)),
                             ("Appointment_Status",     _snap.get("Appointment_Status",     _appt_status(edit_rec.get("Appointment_Status", ""))),  e_appt_status),
                         ]
-                        # Tentative → Confirmed: the real date is fixed, so Party 1 gets the checklist now
-                        _just_confirmed = any(f == "Appointment_Status" and new == "Confirmed"
-                                              for f, old, new in field_map if old != new)
                         changes = [(f, old, new) for f, old, new in field_map if old != new]
 
                         # Always update snapshot to the just-saved values so the next
@@ -1330,6 +1334,8 @@ elif page == "✏️ Edit Records":
                         }
 
                         if changes:
+                            _status_note = (" Appointment confirmed and moved to the main sheet." if confirm_btn
+                                            else " Still Tentative — no WhatsApp sent." if _rec_tentative else "")
                             try:
                                 sheets_manager.log_history(real_entry_id, username, changes)
                                 clear_history_cache()
@@ -1338,6 +1344,7 @@ elif page == "✏️ Edit Records":
                                     "success",
                                     f"✅ Record **{real_entry_id}** saved. "
                                     f"**{len(changes)} field(s)** changed — edit history updated below."
+                                    f"{_status_note}"
                                 )
                             except Exception as log_ex:
                                 st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
@@ -1345,7 +1352,7 @@ elif page == "✏️ Edit Records":
                                     "warning",
                                     f"⚠️ Record saved to sheet but history logging failed: {log_ex}"
                                 )
-                            # WhatsApp notification — build record dict from saved values
+                            # Tentative records stay silent; confirming announces them below
                             try:
                                 _updated_record = {
                                     "Doc_Type":               e_doc_type,
@@ -1364,16 +1371,16 @@ elif page == "✏️ Edit Records":
                                     "Party_Name 1 Partners":  number_lines(e_partners),
                                     "Appointment_Status":     e_appt_status,
                                 }
-                                notify_record_updated(
-                                    entry_id=real_entry_id,
-                                    record=use_english_names(_updated_record),
-                                    changes=use_english_changes(changes),
-                                    updated_by=username,
-                                )
+                                if not _rec_tentative:
+                                    notify_record_updated(
+                                        entry_id=real_entry_id,
+                                        record=use_english_names(_updated_record),
+                                        changes=use_english_changes(changes),
+                                        updated_by=username,
+                                    )
                             except Exception:
                                 pass
-                            if _just_confirmed:
-                                # Same record shape New Entry sends the checklist with
+                            if confirm_btn:
                                 _confirmed_record = {
                                     "entry_id":             real_entry_id,
                                     "doc_type":             e_doc_type,
@@ -1391,10 +1398,13 @@ elif page == "✏️ Edit Records":
                                     "title_status":         e_status,
                                     "remark":               e_remark.strip(),
                                     "created_by":           str(edit_rec.get("Created_By", "")),
-                                    "appointment_status":   e_appt_status,
+                                    "entry_date":           str(edit_rec.get("Entry_Date", "")),
+                                    "entry_time":           str(edit_rec.get("Entry_Time", "")),
+                                    "confirmed_by":         username,
                                 }
                                 with st.spinner("📱 Appointment confirmed — sending WhatsApp checklist to Party 1..."):
                                     _cl_status = send_party1_checklist(_confirmed_record)
+                                notify_appointment_confirmed(_confirmed_record)
                                 st.session_state["_edit_checklist_result"] = _cl_status
                                 if _cl_status[0] == "sent":
                                     try:
@@ -2176,7 +2186,7 @@ elif page == "⚙️ Configuration":
 
         st.subheader("Party 1 Document Checklist")
         st.caption(
-            "When a new entry is saved, a WhatsApp message is sent to the **Party 1 Mobile No** "
+            "When an appointment is confirmed in Edit Records, a WhatsApp message is sent to the **Party 1 Mobile No** "
             "listing the documents to bring for that Document Type. Pick a Document Type below "
             "to see or change its documents."
         )
@@ -2185,7 +2195,7 @@ elif page == "⚙️ Configuration":
         _p1_default = _p1_cfg.get("default_items", []) or []
 
         _p1_enabled = st.checkbox(
-            "Send checklist message to Party 1 on New Entry",
+            "Send checklist message to Party 1 when an appointment is confirmed",
             value=bool(_p1_cfg.get("enabled", False)), key="cfg_p1_enabled"
         )
         if st.button("💾 Save", key="cfg_p1_enabled_save"):

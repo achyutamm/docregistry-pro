@@ -5,7 +5,6 @@ DocRegistry Pro - Phase 2
 
 import streamlit as st
 from utils.sheets_cache import get_sheets_manager, clear_records_cache
-from utils.notification_router import notify_new_entry, send_party1_checklist
 from utils.date_utils import format_appt_date, appt_time_input
 from utils.sheets_manager import number_lines, clean_lines
 from utils import gujarati_translit
@@ -105,22 +104,12 @@ with top_col2:
 # the emptied fields.
 if "_new_entry_saved" in st.session_state:
     _saved = st.session_state.pop("_new_entry_saved")
-    st.success("✅ Entry saved successfully!")
+    st.success("✅ Entry saved in Tentative Records.")
+    st.info("⏳ No WhatsApp message was sent. When the final date is fixed, open this record in "
+            "✏️ Edit Records and press ✅ Confirm Appointment: it then moves to the main sheet, "
+            "and Party 1 and the group get their messages.")
     st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
     st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
-    _wa_state, _wa_detail = _saved.get("party1_wa", ("skipped", ""))
-    if _wa_state == "sent":
-        st.success(f"📱 {_wa_detail}")
-    elif _wa_state == "queued":
-        st.warning(f"📥 {_wa_detail}")
-    elif _wa_state == "not_on_whatsapp":
-        st.error(f"⚠️ {_wa_detail}")
-    elif _wa_state == "failed":
-        st.warning(f"⚠️ {_wa_detail}")
-    elif _wa_state == "tentative":
-        st.info(f"⏳ {_wa_detail}")
-    elif _wa_detail:
-        st.info(f"📱 WhatsApp to Party 1 not sent: {_wa_detail}")
     st.markdown("### 📄 Saved Record")
     st.dataframe(pd.DataFrame(_saved["preview"]), hide_index=True, use_container_width=True)
     st.divider()
@@ -184,19 +173,15 @@ party2_is_bank = doc_type in BANK_PARTY2_DOC_TYPES
 # ============================================
 with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     st.markdown("##### Appointment")
+    st.caption("⏳ Every new entry starts as Tentative. No WhatsApp message goes out until the "
+               "final date is confirmed in Edit Records.")
 
     # Row 1: Date & Time
     c1, c2 = st.columns(2)
     with c1:
-        entry_date = st.date_input("Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
+        entry_date = st.date_input("Tentative Date *", value=date.today(), key="entry_date", format="DD/MM/YYYY")
     with c2:
-        entry_time = appt_time_input("Time *", value=time(10, 0), key="entry_time")
-    appt_tentative = st.checkbox(
-        "⏳ Date not final yet (tentative / placeholder)", key="appt_tentative",
-        help="Saves the entry with this date as a placeholder. The Party 1 checklist and daily "
-             "reminders wait until you change the status to Confirmed in Edit Records.",
-    )
-    appointment_status = "Tentative" if appt_tentative else "Confirmed"
+        entry_time = appt_time_input("Tentative Time *", value=time(10, 0), key="entry_time")
 
     # Row 2: Party Information
     st.markdown("### 👥 Party Information")
@@ -275,7 +260,7 @@ def build_preview_df(entry_id, saved):
         "Document Type":     doc_type,
         "Appointment Date":  format_appt_date(entry_date),
         "Appointment Time":  str(entry_time),
-        "Appt. Status":      appointment_status,
+        "Appt. Status":      "Tentative",
         "SRO":               sro,
         "Party Name 1":      _p1_saved,
         "Party 1 Mobile No": party1_mobile,
@@ -359,49 +344,10 @@ def _save_entry(english):
             entry_time=datetime.now().strftime("%H:%M:%S"),
             remark=remark.strip(),
             party1_partners=_partners_saved,
-            appointment_status=appointment_status,
         )
 
         if success:
             clear_records_cache()
-            # Messages use the English names
-            _record = {
-                "entry_id":             entry_id,
-                "doc_type":             doc_type,
-                "appointment_date":     format_appt_date(entry_date),
-                "appointment_time":     str(entry_time),
-                "sro":                  sro,
-                "party_name_1":         gujarati_translit.english_only(_p1_saved),
-                "party1_mobile":        party1_mobile.strip(),
-                "party1_partners":      gujarati_translit.english_only(_partners_saved),
-                "party_name_2":         _party2_value,
-                "garvi_application_id": garvi_appli_no.strip(),
-                "index_application_no": index_appli_no.strip(),
-                "index_no":             index_no.strip(),
-                "search_no":            search_no.strip(),
-                "title_status":         title_status,
-                "remark":               remark.strip(),
-                "created_by":           username,
-                "entry_date":           str(date.today()),
-                "entry_time":           datetime.now().strftime("%H:%M:%S"),
-                "appointment_status":   appointment_status,
-            }
-            if appt_tentative:
-                # The date is a placeholder - the checklist goes out on confirmation
-                _wa_status = ("tentative", "Tentative appointment - the Party 1 checklist will be "
-                                           "sent when you mark it Confirmed in Edit Records.")
-            else:
-                with st.spinner("📱 Sending WhatsApp checklist to Party 1..."):
-                    _wa_status = send_party1_checklist(_record)
-
-            # WhatsApp worked, so the service is up: send anything left pending
-            if _wa_status[0] == "sent":
-                try:
-                    whatsapp_queue.flush()
-                except Exception:
-                    pass
-
-            notify_new_entry(_record)
             st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
             st.session_state.pop("_ne_xlit_review", None)
             st.session_state["_new_entry_saved"] = {
@@ -409,7 +355,6 @@ def _save_entry(english):
                 "created_by": username,
                 "timestamp":  datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "preview":    build_preview_df(entry_id, _saved).to_dict("records"),
-                "party1_wa":  _wa_status,
             }
             _clear_form()
             st.rerun()
@@ -471,7 +416,7 @@ with st.expander("ℹ️ Form Instructions"):
 
     **Required fields** (marked with `*`):
     - Document Type
-    - Date & Time
+    - Tentative Date & Time
     - SRO
     - Party Name 1
     - Title Status

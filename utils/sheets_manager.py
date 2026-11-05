@@ -13,9 +13,30 @@ from utils.app_env import CONFIG_FILE, IS_DEV
 
 load_dotenv()
 
+# New entries wait in this tab until the final date is confirmed, then move to Sheet1
+TENTATIVE_TAB = "Tentative Records"
+TENTATIVE_ALERT_DAYS = 15   # client rule: a tentative date should be confirmed within 15 days
+
+
 def is_tentative(status) -> bool:
-    """Appointment_Status says the date is only a placeholder. Blank (older rows) = Confirmed."""
+    """Appointment_Status says the date is not final. Blank (older rows) = Confirmed."""
     return str(status or "").strip().lower() == "tentative"
+
+
+def with_days_tentative(df: pd.DataFrame) -> pd.DataFrame:
+    """Add "Days Tentative" (today - Entry_Date), oldest first."""
+    entered = pd.to_datetime(df["Entry_Date"], errors="coerce")
+    days = (pd.Timestamp.today().normalize() - entered).dt.days.astype("Int64")
+    return df.assign(**{"Days Tentative": days}).sort_values("Days Tentative", ascending=False)
+
+
+def sort_by_appt_date(df: pd.DataFrame) -> pd.DataFrame:
+    """Nearest Appointment Date first; rows without a readable date last."""
+    if "Appointment Date" not in df.columns:
+        return df
+    return (df.assign(_appt_sort=parse_appt_date_series(df["Appointment Date"]))
+            .sort_values("_appt_sort", ascending=True, na_position="last")
+            .drop(columns=["_appt_sort"]).reset_index(drop=True))
 
 
 def clean_lines(text) -> str:
@@ -142,11 +163,20 @@ class SheetsManager:
             "Entry_Time",
             "Remark",
             "Party_Name 1 Partners",   # other Party 1 names (partners), one per line
-            "Appointment_Status",      # "Confirmed" or "Tentative" (placeholder date); blank = Confirmed
+            "Appointment_Status",      # Sheet1: Confirmed (blank on older rows); Tentative Records tab: Tentative
         ]
 
-        # Auto-create headers in Sheet1 if it is empty (must be after self.headers is set)
-        self._ensure_headers()
+        # New entries live here until confirmed. Same columns as Sheet1.
+        try:
+            self.tentative_sheet = self.workbook.worksheet(TENTATIVE_TAB)
+        except gspread.exceptions.WorksheetNotFound:
+            self.tentative_sheet = self.workbook.add_worksheet(
+                title=TENTATIVE_TAB, rows=1000, cols=len(self.headers)
+            )
+
+        # Auto-create headers if a sheet is empty (must be after self.headers is set)
+        self._ensure_headers(self.sheet)
+        self._ensure_headers(self.tentative_sheet)
         self._ensure_history_headers()
         self._ensure_user_requests_headers()
         self._ensure_activity_log_headers()
@@ -155,19 +185,19 @@ class SheetsManager:
     # =====================================================
     # ENSURE HEADERS (AUTO-SETUP ON EMPTY SHEET)
     # =====================================================
-    def _ensure_headers(self):
-        first_row = self.sheet.row_values(1)
+    def _ensure_headers(self, ws):
+        first_row = ws.row_values(1)
         if not first_row:
-            self.sheet.insert_row(self.headers, 1)
+            ws.insert_row(self.headers, 1)
             return
         # Migrate sheets created before a column was added: append any missing
         # headers at the end, in order, so existing columns never move.
         missing = [h for h in self.headers if h not in first_row]
         needed_cols = len(first_row) + len(missing)
-        if missing and needed_cols > self.sheet.col_count:
-            self.sheet.add_cols(needed_cols - self.sheet.col_count)
+        if missing and needed_cols > ws.col_count:
+            ws.add_cols(needed_cols - ws.col_count)
         for offset, header in enumerate(missing, start=1):
-            self.sheet.update_cell(1, len(first_row) + offset, header)
+            ws.update_cell(1, len(first_row) + offset, header)
 
     def _ensure_history_headers(self):
         """Insert the header row in Edit_History if it is missing or data is in row 1."""
@@ -242,8 +272,8 @@ class SheetsManager:
         entry_time,
         remark="",
         party1_partners="",
-        appointment_status="Confirmed"
     ):
+        """Every new entry starts in the Tentative Records tab (see confirm_record)."""
         entry_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
         row = [
@@ -265,23 +295,27 @@ class SheetsManager:
             entry_time,
             remark,
             party1_partners,
-            appointment_status,
+            "Tentative",
         ]
 
-        next_row = len(self.sheet.col_values(1)) + 1
-        self.sheet.insert_row(row, next_row)
+        self._insert_sorted(self.tentative_sheet, row)
+        return True, entry_id
+
+    def _insert_sorted(self, ws, row):
+        next_row = len(ws.col_values(1)) + 1
+        ws.insert_row(row, next_row)
 
         # Re-sort the sheet by Appointment Date ascending after every insert so the
         # sheet always shows the nearest date at the top. Done in Python (rather than
         # via Worksheet.sort) because the column is plain DD/MM/YYYY text — a native
         # Sheets text sort would order it alphabetically (by day) instead of
         # chronologically.
-        total_rows = len(self.sheet.col_values(1))
+        total_rows = len(ws.col_values(1))
         if total_rows > 2:
             num_cols = len(self.headers)
             last_col = chr(ord('A') + num_cols - 1)  # e.g. 'Q' for 17 columns
             data_range = f'A2:{last_col}{total_rows}'
-            body_rows = self.sheet.get(data_range)
+            body_rows = ws.get(data_range)
             # Pad ragged rows (Sheets trims trailing empty cells) so every cell is
             # written explicitly — otherwise a row moving into a position previously
             # occupied by a longer row would leave that row's stale trailing values behind.
@@ -290,9 +324,32 @@ class SheetsManager:
                 parse_appt_date(r[2]) is None,
                 (parse_appt_date(r[2]) or _date.min).toordinal(),
             ))
-            self.sheet.update(data_range, body_rows, value_input_option='RAW')
+            ws.update(data_range, body_rows, value_input_option='RAW')
 
-        return True, entry_id
+    # =====================================================
+    # CONFIRM RECORD (Tentative Records tab -> Sheet1)
+    # =====================================================
+    def confirm_record(self, entry_id, doc_type, appointment_date, appointment_time,
+                       sro, party_name_1, party1_mobile, party_name_2,
+                       garvi_application_id, index_application_no, index_no,
+                       search_no, title_status, remark="", party1_partners=""):
+        """Move a tentative record to Sheet1 with the values from the edit form.
+        Sheet1 is written first, so a failure part-way can't lose the record, and
+        pressing Confirm again finishes the move without adding it twice."""
+        cell = self.tentative_sheet.find(str(entry_id), in_column=1)
+        if not cell:
+            return False
+        saved = self.tentative_sheet.row_values(cell.row)
+        created_by, entry_date, entry_time = (saved + [""] * len(self.headers))[13:16]
+        if not self.sheet.find(str(entry_id), in_column=1):
+            self._insert_sorted(self.sheet, [
+                str(entry_id), doc_type, appointment_date, appointment_time, sro,
+                party_name_1, party1_mobile, party_name_2,
+                garvi_application_id, index_application_no, index_no, search_no, title_status,
+                created_by, entry_date, entry_time, remark, party1_partners, "Confirmed",
+            ])
+        self.tentative_sheet.delete_rows(cell.row)
+        return True
 
     # =====================================================
     # UPDATE RECORD
@@ -300,16 +357,19 @@ class SheetsManager:
     def update_record(self, entry_id, doc_type, appointment_date, appointment_time,
                       sro, party_name_1, party1_mobile, party_name_2,
                       garvi_application_id, index_application_no, index_no,
-                      search_no, title_status, remark="", party1_partners=None,
-                      appointment_status=None):
-        cell = self.sheet.find(str(entry_id), in_column=1)
-        if not cell:
+                      search_no, title_status, remark="", party1_partners=None):
+        """Update the record in whichever tab it is in; it stays in that tab."""
+        for ws in (self.sheet, self.tentative_sheet):
+            cell = ws.find(str(entry_id), in_column=1)
+            if cell:
+                break
+        else:
             return False
         row = cell.row
         # Update columns B–M (core fields); N/O/P (Created_By, Entry_Date/Time) are preserved.
         # value_input_option='RAW' prevents Google Sheets from auto-converting
         # "10:15:00" into a time fraction number, which breaks history comparison.
-        self.sheet.update(
+        ws.update(
             f"B{row}:M{row}",
             [[doc_type, appointment_date, appointment_time, sro,
               party_name_1, party1_mobile, party_name_2,
@@ -318,13 +378,10 @@ class SheetsManager:
             value_input_option='RAW'
         )
         # Q is Remark (col 17); update separately to skip N/O/P
-        self.sheet.update_cell(row, 17, remark)
+        ws.update_cell(row, 17, remark)
         # R is Party_Name 1 Partners (col 18); None = leave as is
         if party1_partners is not None:
-            self.sheet.update_cell(row, 18, party1_partners)
-        # S is Appointment_Status (col 19); None = leave as is
-        if appointment_status is not None:
-            self.sheet.update_cell(row, 19, appointment_status)
+            ws.update_cell(row, 18, party1_partners)
         return True
 
     # =====================================================
@@ -628,8 +685,17 @@ class SheetsManager:
     # READ RECORDS
     # =====================================================
     def get_all_records(self):
+        """Confirmed records (Sheet1). Tentative ones are only in get_tentative_records()."""
+        return self._read_records(self.sheet)
+
+    def get_tentative_records(self):
+        """Records in the Tentative Records tab, waiting for their final date."""
+        df = self._read_records(self.tentative_sheet)
+        return df.assign(Appointment_Status="Tentative") if not df.empty else df
+
+    def _read_records(self, ws):
         df = pd.DataFrame(
-            self.sheet.get_all_records(expected_headers=self.headers)
+            ws.get_all_records(expected_headers=self.headers)
         )
         # Keep ID/number-like columns as plain strings to prevent comma formatting
         str_cols = [
@@ -640,11 +706,7 @@ class SheetsManager:
         for col in str_cols:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
-        # Always return records sorted by Appointment Date ascending (nearest date first)
-        if "Appointment Date" in df.columns:
-            df = df.assign(_appt_sort=parse_appt_date_series(df["Appointment Date"]))
-            df = df.sort_values("_appt_sort", ascending=True, na_position="last").drop(columns=["_appt_sort"]).reset_index(drop=True)
-        return df
+        return sort_by_appt_date(df)
 
     def get_appointments_for_date(self, target_date=None):
         """Return all records whose Appointment Date matches target_date (a date object).
@@ -657,8 +719,4 @@ class SheetsManager:
         if "Appointment Date" not in df.columns:
             return df
         parsed = parse_appt_date_series(df["Appointment Date"])
-        out = df[parsed.dt.date == target_date]
-        # Tentative appointments have a placeholder date — leave them out of reminders
-        if "Appointment_Status" in out.columns:
-            out = out[~out["Appointment_Status"].map(is_tentative)]
-        return out.reset_index(drop=True)
+        return df[parsed.dt.date == target_date].reset_index(drop=True)
