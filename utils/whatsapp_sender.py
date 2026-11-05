@@ -350,7 +350,7 @@ def notify_appointment_confirmed(record: dict):
         return
 
     text = (
-        "✅ *Appointment Confirmed — DocRegistry Pro*\n\n"
+        "📝 *New Entry — DocRegistry Pro*\n\n"
         f"*Entry ID:* {record.get('entry_id', '')}\n"
         f"*Doc Type:* {record.get('doc_type', '')}\n"
         f"*Appointment Date:* {record.get('appointment_date', '')}\n"
