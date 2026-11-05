@@ -325,9 +325,9 @@ if page == "🏠 Dashboard":
         st.success("✅ No tentative records. Every entry has its final date.")
     else:
         _tent_df = with_days_tentative(_tent_df)
-        _tent_over = int((_tent_df["Days Tentative"] > TENTATIVE_ALERT_DAYS).sum())
+        _tent_over = int((_tent_df["Days Tentative"] >= TENTATIVE_ALERT_DAYS).sum())
         if _tent_over:
-            st.error(f"🚨 {_tent_over} record(s) tentative for more than {TENTATIVE_ALERT_DAYS} days. "
+            st.error(f"🚨 {_tent_over} record(s) tentative for {TENTATIVE_ALERT_DAYS} days or more. "
                      "Please fix the final date.")
         st.caption("Oldest first. When the final date is fixed, open the record in ✏️ Edit Records, set the "
                    "date and time and press ✅ Confirm Appointment: it moves to the main sheet, and Party 1 "
@@ -1257,8 +1257,6 @@ elif page == "✏️ Edit Records":
                 st.error("❌ Party Name 1 is required.")
             elif phone_utils.validate(e_party1_cc, e_party1_number):
                 st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(e_party1_cc, e_party1_number)}")
-            elif confirm_btn and e_date < date.today():
-                st.error("❌ The date is in the past. Set the final appointment date, then confirm.")
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
@@ -1402,8 +1400,12 @@ elif page == "✏️ Edit Records":
                                     "entry_time":           str(edit_rec.get("Entry_Time", "")),
                                     "confirmed_by":         username,
                                 }
-                                with st.spinner("📱 Appointment confirmed — sending WhatsApp checklist to Party 1..."):
-                                    _cl_status = send_party1_checklist(_confirmed_record)
+                                if e_date < date.today():
+                                    # Party 1 can't act on a list of documents for a date already gone
+                                    _cl_status = ("skipped", f"the date {format_appt_date(e_date)} is in the past.")
+                                else:
+                                    with st.spinner("📱 Appointment confirmed — sending WhatsApp checklist to Party 1..."):
+                                        _cl_status = send_party1_checklist(_confirmed_record)
                                 notify_appointment_confirmed(_confirmed_record)
                                 st.session_state["_edit_checklist_result"] = _cl_status
                                 if _cl_status[0] == "sent":

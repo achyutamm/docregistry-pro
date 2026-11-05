@@ -1,16 +1,11 @@
 """
-Standalone pending-records alert for DocRegistry Pro.
+Standalone group alerts for DocRegistry Pro.
 
-Mirrors the Dashboard's "Pending Records Alert" panel: records currently in
-Pending status, with Days Pending = today - Entry_Date. Only messages the
-WhatsApp/Telegram group when at least one record has been pending for over
-30 days, to avoid noise on quiet weeks.
+--tentative (runs daily via GitHub Actions): each record still in the Tentative
+Records tab is listed on the day it reaches 15, 30, 45... days since it was saved.
 
-With --tentative it reminds the group instead about records still in the
-Tentative Records tab more than 15 days after they were entered.
-
-Runs via GitHub Actions: weekly for pending records, on the 1st and 16th of
-each month for tentative records.
+Without --tentative: records Pending for over 30 days. This weekly alert is no
+longer scheduled (client decision); it can still be run by hand.
 
 Usage:
     python pending_records_notifier.py
@@ -69,14 +64,14 @@ def run_tentative():
         return
 
     df = with_days_tentative(df)
-    overdue = df[df["Days Tentative"] > TENTATIVE_ALERT_DAYS]
-    print(f"{len(overdue)} record(s) tentative for over {TENTATIVE_ALERT_DAYS} days "
-          f"— {len(df)} tentative total.")
-    if overdue.empty:
-        print("Nothing over the limit — no reminder sent.")
+    days = df["Days Tentative"]
+    due = df[((days > 0) & (days % TENTATIVE_ALERT_DAYS == 0)).fillna(False)]
+    print(f"{len(due)} record(s) due a reminder today — {len(df)} tentative total.")
+    if due.empty:
+        print("None due — no reminder sent.")
         return
 
-    notify_tentative_overdue([use_english_names(r) for r in overdue.to_dict("records")], len(df))
+    notify_tentative_overdue([use_english_names(r) for r in due.to_dict("records")], len(df))
     print("Reminder sent.")
 
 

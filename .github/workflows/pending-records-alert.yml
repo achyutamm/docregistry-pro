@@ -1,15 +1,14 @@
-name: Pending Records Alert
+name: Tentative Records Reminder
 
 on:
   schedule:
-    - cron: "30 3 * * 1"     # Pending records over 30 days: every Monday, 09:00 IST (03:30 UTC)
-    - cron: "30 3 1,16 * *"  # Tentative records over 15 days: 1st and 16th, 09:00 IST
+    - cron: "30 3 * * *"  # Daily, 09:00 IST (03:30 UTC): records reaching 15, 30, 45... days as tentative
   workflow_dispatch:
     inputs:
       alert:
-        description: "Which alert to send: pending or tentative"
+        description: "Which alert to send: tentative or pending"
         required: false
-        default: "pending"
+        default: "tentative"
 
 jobs:
   notify:
@@ -33,14 +32,14 @@ jobs:
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
 
-      - name: Run pending records notifier
+      - name: Run notifier
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BAILEYS_API_KEY: ${{ secrets.BAILEYS_API_KEY }}
         run: |
-          if [ "${{ github.event.schedule }}" = "30 3 1,16 * *" ] || [ "${{ github.event.inputs.alert }}" = "tentative" ]; then
-            python pending_records_notifier.py --tentative
-          else
+          if [ "${{ github.event.inputs.alert }}" = "pending" ]; then
             python pending_records_notifier.py
+          else
+            python pending_records_notifier.py --tentative
           fi

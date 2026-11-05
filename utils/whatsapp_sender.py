@@ -375,7 +375,7 @@ def notify_appointment_confirmed(record: dict):
 
 
 def notify_tentative_overdue(records: list, total_tentative: int):
-    """One message listing the records still tentative past the client's 15-day limit."""
+    """One message listing the records that reached another 15 days as tentative today."""
     if not _enabled():
         return
     lines = [
@@ -389,7 +389,7 @@ def notify_tentative_overdue(records: list, total_tentative: int):
     ]
     _send_group_or_queue(
         "⏳ *Tentative Records Reminder — DocRegistry Pro*\n\n"
-        f"{len(records)} record(s) still tentative after more than 15 days "
+        f"{len(records)} record(s) still tentative after 15 days or more "
         f"({total_tentative} tentative in total).\n\n"
         + "\n\n".join(lines)
         + "\n\nPlease fix the final date and press ✅ Confirm Appointment in Edit Records 🙏"

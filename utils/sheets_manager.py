@@ -15,7 +15,7 @@ load_dotenv()
 
 # New entries wait in this tab until the final date is confirmed, then move to Sheet1
 TENTATIVE_TAB = "Tentative Records"
-TENTATIVE_ALERT_DAYS = 15   # client rule: a tentative date should be confirmed within 15 days
+TENTATIVE_ALERT_DAYS = 15   # client rule: confirm within 15 days of saving; the group is reminded every 15 days
 
 
 def is_tentative(status) -> bool:
