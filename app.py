@@ -52,7 +52,7 @@ from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
 from utils import gujarati_translit
 from utils.gujarati_translit import use_english_names, use_english_changes
-from utils.ui_helpers import nav_options, login_side_panel
+from utils.ui_helpers import nav_options, login_side_panel, sidebar_theme
 from utils.app_env import CONFIG_FILE, IS_DEV
 
 # =====================================================
@@ -288,6 +288,7 @@ username  = st.session_state.username
 # =====================================================
 # SIDEBAR — NAVIGATION
 # =====================================================
+sidebar_theme()
 st.sidebar.title("🏠 DocRegistry Pro")
 if IS_DEV:
     st.sidebar.warning("🧪 **DEV environment** — dev Google Sheet and dev WhatsApp only. Nothing here reaches live data or real clients.")

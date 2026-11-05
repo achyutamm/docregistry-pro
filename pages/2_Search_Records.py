@@ -3,6 +3,7 @@
 """
 
 import streamlit as st
+from utils.ui_helpers import sidebar_theme
 from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_history_cached
 from utils.date_utils import parse_appt_date_series
 import pandas as pd
@@ -94,6 +95,7 @@ def display_df(df):
 # ============================================
 # CUSTOM SIDEBAR NAVIGATION
 # ============================================
+sidebar_theme()
 with st.sidebar:
     st.title("🏛️ DocRegistry Pro")
     st.markdown(f"👋 **{user_info.get('name', username)}**")

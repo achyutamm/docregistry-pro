@@ -9,7 +9,7 @@ from utils.notification_router import notify_new_entry, send_party1_checklist
 from utils.date_utils import format_appt_date, appt_time_input
 from utils.sheets_manager import number_lines, clean_lines
 from utils import gujarati_translit
-from utils.ui_helpers import auto_number_textarea, nav_options
+from utils.ui_helpers import auto_number_textarea, nav_options, sidebar_theme
 from utils import whatsapp_queue
 from utils import phone_utils
 from datetime import datetime, date, time
@@ -69,6 +69,7 @@ def _on_nav_change():
 if st.session_state.pop("_ne_leave_page", False):
     st.switch_page("app.py")
 
+sidebar_theme()
 with st.sidebar:
     st.title("🏠 DocRegistry Pro")
     if IS_DEV:
