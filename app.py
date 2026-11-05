@@ -52,7 +52,7 @@ from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
 from utils import gujarati_translit
 from utils.gujarati_translit import use_english_names, use_english_changes
-from utils.ui_helpers import nav_options
+from utils.ui_helpers import nav_options, login_side_panel
 from utils.app_env import CONFIG_FILE, IS_DEV
 
 # =====================================================
@@ -132,6 +132,7 @@ auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=ge
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
+    login_side_panel(_app_cfg.get("company", "BK Mehta & Associates"))
     st.title(f"🏛️ {_app_cfg.get('name', 'DocRegistry Pro')}")
     st.subheader(f"{_app_cfg.get('company', 'BK Mehta & Associates')} — {_app_cfg.get('tagline', 'Advocate Office Registry Management System')}")
 
