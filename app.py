@@ -663,7 +663,7 @@ elif page == "📅 Calendar":
     st.title("📅 Calendar")
     st.caption("Appointments by date from the registry records. Switch between Month, Week and Day, "
                "and click any day to see its full appointments.")
-    render_calendar(get_every_record_cached(sheets_manager), username=username, display_fn=display_df)
+    render_calendar(get_all_records_cached(sheets_manager), username=username, display_fn=display_df)
 
 # =====================================================
 # NEW ENTRY
