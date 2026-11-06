@@ -211,7 +211,7 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
         _cc_col, _mob_col = st.columns([1, 3])
         party1_cc = _cc_col.text_input("Code", value=phone_utils.DEFAULT_CODE, key="party1_cc", max_chars=4)
         party1_number = _mob_col.text_input(
-            "Party 1 Mobile No", placeholder="e.g., 9876543210",
+            "Party 1 Mobile No *", placeholder="e.g., 9876543210",
             key="party1_mobile", max_chars=10
         )
     # Stored form: plain 10 digits for +91, "+<code> <number>" otherwise
@@ -383,6 +383,8 @@ def _validation_error():
         return "Please select a District and SRO."
     if not garvi_appli_no.strip():
         return "Please enter GARVI Application No."
+    if not party1_number.strip():
+        return "Please enter Party 1 Mobile No - the WhatsApp checklist is sent to this number."
     if phone_utils.validate(party1_cc, party1_number):
         return f"Party 1 Mobile No: {phone_utils.validate(party1_cc, party1_number)}"
     return None
@@ -529,11 +531,11 @@ with st.expander("ℹ️ Form Instructions"):
     - Tentative Date & Time
     - SRO
     - Party Name 1
+    - Party 1 Mobile No
     - GARVI Application No
     - Title Status (when shown)
 
     **Optional fields** (the form shows the ones this Document Type uses):
-    - Party 1 Mobile No
     - Party Name 2 (select from dropdown)
     - Index Application No
     - Index No

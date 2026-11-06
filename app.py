@@ -1277,6 +1277,8 @@ elif page == "✏️ Edit Records":
                 st.error("❌ Party Name 1 is required.")
             elif phone_utils.validate(e_party1_cc, e_party1_number):
                 st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(e_party1_cc, e_party1_number)}")
+            elif confirm_btn and not e_party1_number.strip():
+                st.error("❌ Enter Party 1 Mobile No before confirming - the WhatsApp checklist is sent to this number.")
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
