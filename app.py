@@ -47,7 +47,7 @@ import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
 from utils.doc_fields import OPTIONAL_FIELDS, hidden_fields
-from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS
+from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS, DELETED_TAB
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
@@ -1480,6 +1480,62 @@ elif page == "✏️ Edit Records":
 # =====================================================
 # USER MANAGEMENT (ADMIN ONLY)
 # =====================================================
+elif page == "🗑️ Delete Records":
+
+    st.title("🗑️ Delete Records")
+    st.markdown("Search by GARVI Application ID, check the record, then delete it. "
+                "It is removed from Sheet 1 or Tentative Records, wherever it is.")
+    st.divider()
+
+    if "_delete_result" in st.session_state:
+        _kind, _msg = st.session_state.pop("_delete_result")
+        (st.success if _kind == "success" else st.error)(_msg)
+
+    _garvi = st.text_input("GARVI Application ID", placeholder="e.g., 20261100843645",
+                           key=f"del_garvi_{st.session_state.get('del_key', 0)}").strip().replace(",", "")
+    if _garvi:
+        _all = get_every_record_cached(sheets_manager)
+        _match = (_all[_all["Garvi_Application_ID"].astype(str).str.replace(",", "", regex=False).str.strip() == _garvi]
+                  if not _all.empty and "Garvi_Application_ID" in _all.columns else _all)
+        if _match.empty:
+            st.warning(f"No record found with GARVI Application ID `{_garvi}`.")
+        else:
+            if len(_match) > 1:
+                st.info(f"{len(_match)} records have this GARVI Application ID. Check each one; delete only the one you mean.")
+            for _, _rec in _match.iterrows():
+                _eid = str(_rec.get("Entry_ID", "")).replace(",", "")
+                _where = "Tentative Records" if is_tentative(_rec.get("Appointment_Status")) else "Sheet 1 (confirmed)"
+                with st.container(border=True):
+                    st.markdown(f"#### Entry ID {_eid} · in **{_where}**")
+                    _details = display_df(_rec.to_frame().T)
+                    st.dataframe(
+                        pd.DataFrame({"Field": _details.columns,
+                                      "Value": [str(v) for v in _details.iloc[0].tolist()]}),
+                        hide_index=True, use_container_width=True, height=36 * (len(_details.columns) + 1),
+                    )
+                    _sure = st.checkbox("I have checked all the details above and want to delete this record",
+                                        key=f"del_sure_{_eid}")
+                    if st.button("🗑️ Delete this record", key=f"del_btn_{_eid}", type="primary", disabled=not _sure):
+                        try:
+                            _tab = sheets_manager.delete_record(_eid, username)
+                            if _tab:
+                                try:
+                                    sheets_manager.log_history(_eid, username, [("Record Deleted", f"in {_tab}", "")])
+                                    clear_history_cache()
+                                except Exception:
+                                    pass
+                                st.session_state["_delete_result"] = (
+                                    "success", f"✅ Record {_eid} (GARVI {_garvi}) deleted from {_tab}. "
+                                               f"A copy is kept in the '{DELETED_TAB}' tab of the Google Sheet.")
+                            else:
+                                st.session_state["_delete_result"] = (
+                                    "error", f"❌ Record {_eid} was not found - it may already be deleted.")
+                        except Exception as ex:
+                            st.session_state["_delete_result"] = ("error", f"❌ Could not delete record {_eid}: {ex}")
+                        clear_records_cache()
+                        st.session_state["del_key"] = st.session_state.get("del_key", 0) + 1
+                        st.rerun()
+
 elif page == "👥 User Management":
 
     st.title("👥 User Management")

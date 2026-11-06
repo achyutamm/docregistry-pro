@@ -17,6 +17,7 @@ def nav_options(user_info: dict) -> list:
     """The sidebar menu, the same on every page that shows it."""
     nav = ["🏠 Dashboard", "📅 Calendar", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
     if user_info.get("role") == "admin":
+        nav.append("🗑️ Delete Records")
         nav.append("👥 User Management")
     if user_info.get("config_access", False):
         nav.append("⚙️ Configuration")

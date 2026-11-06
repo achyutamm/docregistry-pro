@@ -15,6 +15,7 @@ load_dotenv()
 
 # New entries wait in this tab until the final date is confirmed, then move to Sheet1
 TENTATIVE_TAB = "Tentative Records"
+DELETED_TAB = "Deleted Records"   # a full copy of every deleted row, so a delete can be undone by hand
 TENTATIVE_ALERT_DAYS = 15   # client rule: confirm within 15 days of saving; the group is reminded every 15 days
 
 
@@ -388,6 +389,29 @@ class SheetsManager:
         if party1_partners is not None:
             ws.update_cell(row, 18, party1_partners)
         return True
+
+    # =====================================================
+    # DELETE RECORD
+    # =====================================================
+    def delete_record(self, entry_id, deleted_by):
+        """Delete the record from whichever tab holds it (Sheet1 or Tentative Records).
+        The full row is first copied to the Deleted Records tab with who and when.
+        Returns the tab name it was deleted from, or None if it wasn't found."""
+        try:
+            deleted_ws = self.workbook.worksheet(DELETED_TAB)
+        except gspread.exceptions.WorksheetNotFound:
+            deleted_ws = self.workbook.add_worksheet(title=DELETED_TAB, rows=1000, cols=len(self.headers) + 3)
+            deleted_ws.append_row(self.headers + ["Deleted_From", "Deleted_By", "Deleted_At"])
+        for ws in (self.sheet, self.tentative_sheet):
+            cell = ws.find(str(entry_id), in_column=1)
+            if not cell:
+                continue
+            row = (ws.row_values(cell.row) + [""] * len(self.headers))[:len(self.headers)]
+            deleted_ws.append_row(row + [ws.title, str(deleted_by), datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                                  value_input_option="RAW")
+            ws.delete_rows(cell.row)
+            return ws.title
+        return None
 
     # =====================================================
     # LOG EDIT HISTORY
