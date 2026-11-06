@@ -30,6 +30,13 @@ def with_days_tentative(df: pd.DataFrame) -> pd.DataFrame:
     return df.assign(**{"Days Tentative": days}).sort_values("Days Tentative", ascending=False)
 
 
+def _match_key(value) -> str:
+    """Compare form values and sheet cells: ignore case, spacing and an English name
+    in brackets, so "અવિનાશ પંચાલ" matches the saved "અવિનાશ પંચાલ (Avinash Panchal)"."""
+    text = re.sub(r"\s*\([^()]*\)\s*$", "", str(value if value is not None else ""))
+    return " ".join(text.split()).casefold()
+
+
 def sort_by_appt_date(df: pd.DataFrame) -> pd.DataFrame:
     """Nearest Appointment Date first; rows without a readable date last."""
     if "Appointment Date" not in df.columns:
@@ -232,23 +239,21 @@ class SheetsManager:
     # =====================================================
     # FIND DUPLICATES (CASE-INSENSITIVE, AND/OR)
     # =====================================================
-    def find_duplicates(self, check_values: dict, mode="AND"):
-        records = self.sheet.get_all_records(expected_headers=self.headers)
-        matches = []
-
-        for row in records:
-            comparisons = []
-            for field, value in check_values.items():
-                sheet_val = str(row.get(field, "")).strip().lower()
-                input_val = str(value).strip().lower()
-                comparisons.append(sheet_val == input_val)
-
-            if mode == "AND" and all(comparisons):
-                matches.append(row)
-            elif mode == "OR" and any(comparisons):
-                matches.append(row)
-
-        return matches
+    def find_matching_records(self, values: dict) -> list:
+        """Saved records, in Sheet1 or Tentative Records, whose columns in `values` all
+        match. Read fresh (not cached) so an entry saved a moment ago is found."""
+        found = []
+        for status, df in (("Confirmed", self.get_all_records()), ("Tentative", self.get_tentative_records())):
+            if df.empty:
+                continue
+            mask = pd.Series(True, index=df.index)
+            for col, val in values.items():
+                if col not in df.columns:
+                    mask &= False
+                else:
+                    mask &= df[col].map(_match_key) == _match_key(val)
+            found += [{**r, "Appointment_Status": status} for r in df[mask].to_dict("records")]
+        return found
 
     # =====================================================
     # ADD RECORD

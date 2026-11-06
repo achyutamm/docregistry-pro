@@ -17,8 +17,10 @@ document_types:
 duplicate_check:
   enabled: true
   fields:
-  - Garvi_Application_ID
-  mode: AND
+  - Doc_Type
+  - Party_Name 1
+  - Appointment Date
+  - SRO
 email:
   admin_emails:
   - bkmehta.associate@gmail.com

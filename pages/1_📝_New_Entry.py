@@ -309,6 +309,47 @@ def _saved_names(english):
                  for (_, v), en in zip(_NAME_FIELDS, english))
 
 
+# Same entry, same values: used to ignore a second click on Submit
+def _entry_fingerprint():
+    return (doc_type, format_appt_date(entry_date), str(entry_time), st.session_state.get("ne_sro"),
+            party_name_1.strip(), party1_mobile.strip(), number_lines(party1_partners), _party2_value,
+            garvi_appli_no.strip(), index_appli_no.strip(), index_no.strip(), search_no.strip(),
+            title_status, remark.strip())
+
+
+DOUBLE_SUBMIT_SECONDS = 120
+
+
+def _matching_records():
+    """Records already saved with the same key fields (config: duplicate_check)."""
+    rules = config.get("duplicate_check") or {}
+    if not rules.get("enabled", True):
+        return []
+    form = {
+        "Doc_Type": doc_type, "Party_Name 1": party_name_1, "Appointment Date": format_appt_date(entry_date),
+        "SRO": st.session_state.get("ne_sro", ""), "Party_Name 1 Mobile_No": party1_mobile,
+        "Garvi_Application_ID": garvi_appli_no, "Inedex_Application_No": index_appli_no,
+        "Index_No": index_no, "Search_No": search_no,
+    }
+    fields = rules.get("fields") or ["Doc_Type", "Party_Name 1", "Appointment Date", "SRO"]
+    want = {f: form[f] for f in fields if f in form and str(form[f]).strip()}
+    if not want:
+        return []
+    try:
+        return get_sheets_manager().find_matching_records(want)
+    except Exception:
+        return []      # a failed check must not stop the office from saving
+
+
+def _start_save():
+    """After the duplicate check: staff check the English names first, or save now."""
+    if _xlit["enabled"] and _xlit["review"] and any(_auto_english()):
+        # Staff check the English spelling before saving (setting in Configuration)
+        st.session_state["_ne_xlit_review"] = _auto_english()
+    else:
+        _save_entry(_auto_english())
+
+
 if preview_btn and not submit_btn:
     st.info("👁️ Preview only – data is not saved to Google Sheets.")
     st.dataframe(build_preview_df("PREVIEW", _saved_names(_auto_english())),
@@ -329,6 +370,14 @@ def _validation_error():
 
 def _save_entry(english):
     """english: (Party 1, Partners) in English - blank where the name is already English."""
+    # A second click on Submit (or Save) for the same values is not saved again
+    _fp = _entry_fingerprint()
+    _last = st.session_state.get("_ne_last_save")
+    if _last and _last["fp"] == _fp and (datetime.now() - _last["at"]).total_seconds() < DOUBLE_SUBMIT_SECONDS:
+        st.info("✅ This entry is already saved" + (f" (Entry ID {_last['entry_id']})" if _last.get("entry_id") else "")
+                + ". It was not saved a second time.")
+        return
+    st.session_state["_ne_last_save"] = {"fp": _fp, "at": datetime.now(), "entry_id": None}
     sro = st.session_state.get("ne_sro", "-- Select SRO --")
     _saved = _saved_names(english)
     _p1_saved, _partners_saved = _saved
@@ -356,6 +405,7 @@ def _save_entry(english):
         )
 
         if success:
+            st.session_state["_ne_last_save"]["entry_id"] = entry_id
             clear_records_cache()
             st.toast(f"✅ Record saved! Entry ID: {entry_id}", icon="✅")
             st.session_state.pop("_ne_xlit_review", None)
@@ -368,8 +418,10 @@ def _save_entry(english):
             _clear_form()
             st.rerun()
         else:
+            st.session_state.pop("_ne_last_save", None)
             st.error("❌ Failed to save entry. Please try again.")
     except Exception as e:
+        st.session_state.pop("_ne_last_save", None)
         st.error(f"❌ Error while saving to Google Sheets: {e}")
 
 
@@ -377,11 +429,40 @@ if submit_btn:
     _err = _validation_error()
     if _err:
         st.error(f"❌ {_err}")
-    elif _xlit["enabled"] and _xlit["review"] and any(_auto_english()):
-        # Staff check the English spelling before saving (setting in Configuration)
-        st.session_state["_ne_xlit_review"] = _auto_english()
     else:
-        _save_entry(_auto_english())
+        _dups = _matching_records()
+        if _dups:
+            st.session_state["_ne_dup"] = (_entry_fingerprint(), _dups)
+        else:
+            _start_save()
+
+if "_ne_dup" in st.session_state:
+    _dup_fp, _dups = st.session_state["_ne_dup"]
+    if _dup_fp != _entry_fingerprint():
+        st.session_state.pop("_ne_dup")       # the form was changed - check again on Submit
+    else:
+        with st.container(border=True):
+            st.warning("⚠️ **This entry is already saved.** A record with the same Document Type, Party Name 1, "
+                       "Date and SRO exists, so it was not added again.")
+            st.dataframe(pd.DataFrame([{
+                "Entry ID": str(r.get("Entry_ID", "")).replace(",", ""),
+                "Status": r.get("Appointment_Status", ""),
+                "Document Type": r.get("Doc_Type", ""),
+                "Date": r.get("Appointment Date", ""),
+                "SRO": r.get("SRO", ""),
+                "Party Name 1": r.get("Party_Name 1", ""),
+                "Created By": r.get("Created_By", ""),
+                "Entry Date": f"{r.get('Entry_Date', '')} {r.get('Entry_Time', '')}".strip(),
+            } for r in _dups]), hide_index=True, use_container_width=True)
+            st.caption("If this really is a separate record (e.g. a second property for the same party), "
+                       "press Save anyway.")
+            dc1, dc2 = st.columns([3, 1])
+            if dc1.button("💾 Save anyway as a new record", use_container_width=True):
+                st.session_state.pop("_ne_dup")
+                _start_save()
+            if dc2.button("✖ Don't save", use_container_width=True):
+                st.session_state.pop("_ne_dup")
+                st.rerun()
 
 if "_ne_xlit_review" in st.session_state:
     _suggested = st.session_state["_ne_xlit_review"]
