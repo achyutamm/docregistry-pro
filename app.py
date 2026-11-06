@@ -2000,7 +2000,8 @@ elif page == "⚙️ Configuration":
         st.caption(
             "Tick the fields each Document Type uses in New Entry and Edit Records; untick to remove one. "
             "A removed field is saved blank. Older records that already hold a value there still show it in "
-            "Edit Records. Document Type, District, SRO, Date, Time, Party Name 1 and Party 1 Mobile No are "
+            "Edit Records. Document Type, District, SRO, Date, Time, Party Name 1, Party 1 Mobile No and GARVI "
+            "Application No are "
             "always on the form."
         )
         _ff_rows = pd.DataFrame([

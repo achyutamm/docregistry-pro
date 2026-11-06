@@ -245,7 +245,7 @@ with st.form(f"registry_form_{_fver}", clear_on_submit=False):
     _cols = {**(dict(zip(_row1, st.columns(len(_row1)))) if _row1 else {}),
              **(dict(zip(_row2, st.columns(len(_row2)))) if _row2 else {})}
     garvi_appli_no = _cols["Garvi_Application_ID"].text_input(
-        "GARVI Application No", placeholder="ex. 20261100843645", key="garvi_appli_no"
+        "GARVI Application No *", placeholder="ex. 20261100843645", key="garvi_appli_no"
     ) if "Garvi_Application_ID" in _cols else ""
     index_appli_no = _cols["Inedex_Application_No"].text_input(
         "Index Application No", placeholder="ex. 80120260372851", key="index_appli_no"
@@ -381,6 +381,8 @@ def _validation_error():
         return "Please enter Party Name 1."
     if district == "-- Select District --" or _sro == "-- Select SRO --":
         return "Please select a District and SRO."
+    if not garvi_appli_no.strip():
+        return "Please enter GARVI Application No."
     if phone_utils.validate(party1_cc, party1_number):
         return f"Party 1 Mobile No: {phone_utils.validate(party1_cc, party1_number)}"
     return None
@@ -527,12 +529,12 @@ with st.expander("ℹ️ Form Instructions"):
     - Tentative Date & Time
     - SRO
     - Party Name 1
+    - GARVI Application No
     - Title Status (when shown)
 
     **Optional fields** (the form shows the ones this Document Type uses):
     - Party 1 Mobile No
     - Party Name 2 (select from dropdown)
-    - GARVI Application No
     - Index Application No
     - Index No
     - Search No

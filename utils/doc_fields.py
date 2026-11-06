@@ -9,7 +9,6 @@ and edited from Configuration -> Document Types.
 OPTIONAL_FIELDS = {
     "Party_Name 1 Partners": "Partners",
     "Party_Name 2":          "Party 2",
-    "Garvi_Application_ID":  "GARVI No",
     "Inedex_Application_No": "Index App No",
     "Search_No":             "Search No",
     "Index_No":              "Index No",
