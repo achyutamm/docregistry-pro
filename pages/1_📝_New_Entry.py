@@ -100,17 +100,30 @@ with top_col1:
 with top_col2:
     st.caption("Your username will be automatically stored in the CREATED_BY column for accountability.")
 
-# Show the previous submission's result (if any) up here — set right before the
-# form-clearing rerun below, so it survives the reset instead of vanishing with
-# the emptied fields.
+# Saved-record pop-up label -> sheet column, to leave out fields this Document Type doesn't use
+_PREVIEW_COLUMNS = {
+    "Party 1 Partners": "Party_Name 1 Partners", "Party Name 2": "Party_Name 2",
+    "GARVI App. No.": "Garvi_Application_ID", "Index App. No.": "Inedex_Application_No",
+    "Index No.": "Index_No", "Search No.": "Search_No", "Title Status": "Title_Status", "Remark": "Remark",
+}
+
+
+@st.dialog("✅ Entry Saved", width="large")
+def _saved_popup(saved):
+    st.success(f"Saved in Tentative Records · Entry ID **{saved['entry_id']}**")
+    st.caption(f"Created by {saved['created_by']} at {saved['timestamp']}")
+    rec = saved["preview"][0]
+    hidden = hidden_fields(config, rec.get("Document Type"))
+    rows = [(k, "" if v is None else str(v)) for k, v in rec.items() if _PREVIEW_COLUMNS.get(k) not in hidden]
+    st.dataframe(pd.DataFrame(rows, columns=["Field", "Value"]), hide_index=True,
+                 use_container_width=True, height=36 * (len(rows) + 1))
+    if st.button("OK", type="primary", use_container_width=True):
+        st.rerun()
+
+
+# The previous submission's result opens as a pop-up over the emptied form
 if "_new_entry_saved" in st.session_state:
-    _saved = st.session_state.pop("_new_entry_saved")
-    st.success("✅ Entry saved in Tentative Records.")
-    st.markdown(f"**Entry ID:** `{_saved['entry_id']}`")
-    st.markdown(f"**Created by:** `{_saved['created_by']}` at {_saved['timestamp']}")
-    st.markdown("### 📄 Saved Record")
-    st.dataframe(pd.DataFrame(_saved["preview"]), hide_index=True, use_container_width=True)
-    st.divider()
+    _saved_popup(st.session_state.pop("_new_entry_saved"))
 
 # ============================================
 # FORM VERSION — bumping this clears all form fields reliably
@@ -125,11 +138,16 @@ _fver = st.session_state.ne_form_ver
 # fixed option.
 BANK_PARTY2_DOC_TYPES = {"Mortgage", "Release"}
 
+_FORM_KEYS = ["ne_district", "ne_sro", "doc_type", "entry_date", "entry_time_h", "entry_time_m", "entry_time_p",
+              "party_name_1", "party1_cc", "party1_mobile", "party1_partners", "party_name_2_select",
+              "party_name_2_text", "garvi_appli_no", "index_appli_no", "search_no", "index_no",
+              "title_status", "remark"]
+
+
 def _clear_form():
     st.session_state.ne_form_ver += 1
-    st.session_state.pop("ne_district", None)
-    st.session_state.pop("ne_sro", None)
-    st.session_state.pop("doc_type", None)
+    for _k in _FORM_KEYS:
+        st.session_state.pop(_k, None)
 
 # ============================================
 # DOCUMENT TYPE, DISTRICT & SRO — outside form so they react instantly
