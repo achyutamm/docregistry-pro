@@ -898,6 +898,11 @@ elif page == "✏️ Edit Records":
             st.dataframe(pd.DataFrame(popup["details"], columns=["Field", "Value"]), hide_index=True,
                          use_container_width=True, height=36 * (len(popup["details"]) + 1))
         if st.button("OK", type="primary", use_container_width=True, key="edit_popup_ok"):
+            # Only now clear the page: empty search, ready for the next record
+            st.session_state["edit_form_key"] += 1
+            st.session_state.pop("_edit_loaded_id", None)
+            for _k in [k for k in st.session_state if str(k).startswith("e_")]:
+                del st.session_state[_k]
             st.rerun()
 
     if "_edit_save_result" in st.session_state:
@@ -1444,11 +1449,6 @@ elif page == "✏️ Edit Records":
                                        + [(FIELD_LABELS.get(f, f), str(new)) for f, _, new in field_map if f in _shown]
                                        + [("Created By", str(edit_rec.get("Created_By", "")))],
                         }
-                        # Start fresh behind the pop-up: empty search, ready for the next record
-                        st.session_state["edit_form_key"] += 1
-                        st.session_state.pop("_edit_loaded_id", None)
-                        for _k in [k for k in st.session_state if str(k).startswith("e_")]:
-                            del st.session_state[_k]
                         st.rerun()
                     else:
                         st.error(f"❌ Record not found in Google Sheets (Entry ID: `{real_entry_id}`).")
