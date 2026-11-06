@@ -874,26 +874,36 @@ elif page == "✏️ Edit Records":
     st.markdown("Search by Entry ID or GARVI Application ID to load and update a record.")
     st.divider()
 
-    # Display save result message carried over from the post-save rerun
+    # The result of the last Save / Confirm opens as a pop-up, like New Entry
+    @st.dialog("✅ Record Saved", width="large")
+    def _edit_saved_popup(result, checklist, popup):
+        kind, msg = result
+        {"success": st.success, "warning": st.warning}.get(kind, st.info)(msg)
+        if checklist:
+            _cl_state, _cl_detail = checklist
+            if _cl_state == "sent":
+                st.success(f"📱 {_cl_detail}")
+            elif _cl_state == "queued":
+                st.warning(f"📥 {_cl_detail}")
+            elif _cl_state in ("not_on_whatsapp", "failed"):
+                st.error(f"⚠️ {_cl_detail}")
+            elif _cl_detail:
+                st.info(f"📱 WhatsApp to Party 1 not sent: {_cl_detail}")
+        if popup and popup["changes"]:
+            st.markdown("**What changed**")
+            st.dataframe(pd.DataFrame(popup["changes"], columns=["Field", "Before", "After"]),
+                         hide_index=True, use_container_width=True)
+        if popup:
+            st.markdown("**Record details**")
+            st.dataframe(pd.DataFrame(popup["details"], columns=["Field", "Value"]), hide_index=True,
+                         use_container_width=True, height=36 * (len(popup["details"]) + 1))
+        if st.button("OK", type="primary", use_container_width=True, key="edit_popup_ok"):
+            st.rerun()
+
     if "_edit_save_result" in st.session_state:
-        kind, msg = st.session_state.pop("_edit_save_result")
-        if kind == "success":
-            st.success(msg)
-        elif kind == "warning":
-            st.warning(msg)
-        else:
-            st.info(msg)
-    # Party 1 checklist sent because a tentative record was just confirmed
-    if "_edit_checklist_result" in st.session_state:
-        _cl_state, _cl_detail = st.session_state.pop("_edit_checklist_result")
-        if _cl_state == "sent":
-            st.success(f"📱 {_cl_detail}")
-        elif _cl_state == "queued":
-            st.warning(f"📥 {_cl_detail}")
-        elif _cl_state in ("not_on_whatsapp", "failed"):
-            st.error(f"⚠️ {_cl_detail}")
-        elif _cl_detail:
-            st.info(f"📱 WhatsApp to Party 1 not sent: {_cl_detail}")
+        _edit_saved_popup(st.session_state.pop("_edit_save_result"),
+                          st.session_state.pop("_edit_checklist_result", None),
+                          st.session_state.pop("_edit_popup", None))
 
     df = get_every_record_cached(sheets_manager)
 
@@ -1425,6 +1435,15 @@ elif page == "✏️ Edit Records":
                                 "ℹ️ Record saved. No field values were changed — history not updated."
                             )
 
+                        # Pop-up details: what changed, and the record as saved (fields this
+                        # Document Type doesn't use are left out when empty)
+                        _shown = {f for f, _, new in field_map if _e_show(f) or str(new).strip()}
+                        st.session_state["_edit_popup"] = {
+                            "changes": [(FIELD_LABELS.get(f, f), str(old), str(new)) for f, old, new in changes],
+                            "details": [("Entry ID", real_entry_id)]
+                                       + [(FIELD_LABELS.get(f, f), str(new)) for f, _, new in field_map if f in _shown]
+                                       + [("Created By", str(edit_rec.get("Created_By", "")))],
+                        }
                         st.rerun()
                     else:
                         st.error(f"❌ Record not found in Google Sheets (Entry ID: `{real_entry_id}`).")
