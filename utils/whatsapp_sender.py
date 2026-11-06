@@ -229,11 +229,13 @@ def render_party1_checklist(checklist_cfg: dict, record: dict, company: str = ""
     values["appointment_time"] = _format_appt_time(record.get("appointment_time", ""))
     values["party_name_2"] = party2
     values["checklist"] = "\n".join(f"{n}. {item}" for n, item in enumerate(items, 1))
-    # {partners} is a whole block (heading + names) when Party 1 has partners,
-    # and empty otherwise — so the template needs no extra blank-line handling.
-    partners = str(record.get("party1_partners", "") or "").strip()
-    heading = str(checklist_cfg.get("partners_heading", "") or "").strip().rstrip(":").strip() or "Partners"
-    values["partners"] = f"\n*{heading}:*\n{partners}\n" if partners else ""
+    # {partners} is a whole block when Party 1 has partners - "Party 1: name", "Party 2: name"... -
+    # and empty otherwise, so the template needs no extra blank-line handling.
+    names = [re.sub(r"^\s*\d+(?:\s*[.)\-:]\s*|\s+|$)", "", line).strip()
+             for line in str(record.get("party1_partners", "") or "").splitlines()]
+    names = [n for n in names if n]
+    values["partners"] = ("\n" + "\n".join(f"Party {n}: {name}" for n, name in enumerate(names, 1)) + "\n"
+                          if names else "")
     values["contact_numbers"] = contacts
     values.setdefault("company", company)
     # Optional blocks ({partners}, a dropped contact line) can leave extra blank lines

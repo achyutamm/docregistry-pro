@@ -2339,18 +2339,13 @@ elif page == "⚙️ Configuration":
             "`{checklist}` is replaced by the numbered document list. Other placeholders: "
             "`{party_name_1}` `{party_name_2}` (its line is left out when the entry has no Party 2) "
             "`{doc_type}` `{appointment_date}` `{appointment_time}` "
-            "`{sro}` `{entry_id}` `{company}` · `{partners}` adds the partner names (with the heading "
-            "below) only when the entry has Party 1 Partners · `{contact_numbers}` = the office numbers from "
+            "`{sro}` `{entry_id}` `{company}` · `{partners}` lists the Party 1 Partners as Party 1: name, "
+            "Party 2: name… (left out when there are none) · `{contact_numbers}` = the office numbers from "
             "Configuration → WhatsApp (a line using it is left out if none are set) · `*bold*` works on WhatsApp."
-        )
-        _p1_heading = st.text_input(
-            "Heading shown above partner names",
-            value=str(_p1_cfg.get("partners_heading", "") or "Partners"),
-            placeholder="e.g. Partners", key=f"cfg_p1_heading_{cfgk}",
         )
         if st.button("💾 Save Message", key="cfg_p1_msg_save"):
             try:
-                set_party1_checklist_message(_p1_msg, _p1_heading)
+                set_party1_checklist_message(_p1_msg)
                 st.session_state["cfg_flash"] = ("success", "✅ Checklist message wording saved.")
                 st.session_state["cfg_widget_key"] += 1
                 st.rerun()
@@ -2362,8 +2357,7 @@ elif page == "⚙️ Configuration":
         # ── Preview + test (uses the unsaved edits above) ───────────────
         _p1_preview_type = _p1_sel
         _p1_draft_items = {**_p1_items, _p1_sel: _p1_new_items}
-        _p1_draft_cfg = {"message": _p1_msg, "items": _p1_draft_items, "default_items": _p1_default,
-                         "partners_heading": _p1_heading}
+        _p1_draft_cfg = {"message": _p1_msg, "items": _p1_draft_items, "default_items": _p1_default}
         _p1_sample = {
             "entry_id": "ENT-PREVIEW", "doc_type": _p1_preview_type,
             "appointment_date": date.today().strftime("%d/%m/%Y"), "appointment_time": "11:30:00",
