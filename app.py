@@ -333,7 +333,7 @@ if page == "🏠 Dashboard":
         st.caption("Oldest first. When the final date is fixed, open the record in ✏️ Edit Records, set the "
                    "date and time and press ✅ Confirm Appointment: it moves to the main sheet, and Party 1 "
                    "and the group get their messages.")
-        _tent_cols = [c for c in ["Days Tentative", "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+        _tent_cols = [c for c in ["Days Tentative", "Entry_ID", "Garvi_Application_ID", "Doc_Type", "Appointment Date", "Appointment Time",
                                   "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
                                   "Title_Status", "Created_By", "Entry_Date", "Remark"] if c in _tent_df.columns]
         st.dataframe(display_df(_tent_df[_tent_cols]), use_container_width=True, hide_index=True)
