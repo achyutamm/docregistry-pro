@@ -386,7 +386,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Entry ID:* {record.get('entry_id', '')}\n"
         f"*Doc Type:* {record.get('doc_type', '')}\n"
         f"*Appointment Date:* {record.get('appointment_date', '')}\n"
-        f"*Appointment Time:* {record.get('appointment_time', '')}\n"
+        f"*Appointment Time:* {_format_appt_time(record.get('appointment_time', ''))}\n"
         "*Appointment Status:* ✅ Confirmed\n"
         f"*SRO:* {record.get('sro', '')}\n"
         f"*Party Name 1:* {record.get('party_name_1', '')}\n"
@@ -402,7 +402,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
         f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
-        f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
+        f"*Entry Date:* {record.get('entry_date', '')}  *Entry Time:* {record.get('entry_time', '')}"
     )
     _send_group_or_queue(_drop_hidden_fields(text, record.get("doc_type")), record.get("entry_id", ""))
 
@@ -418,7 +418,7 @@ def notify_record_deleted(record: dict, deleted_from: str, deleted_by: str):
         f"*Entry ID:* {str(record.get('Entry_ID', '')).replace(',', '')}\n"
         f"*Doc Type:* {record.get('Doc_Type', '')}\n"
         f"*Appointment Date:* {record.get('Appointment Date', '')}\n"
-        f"*Appointment Time:* {record.get('Appointment Time', '')}\n"
+        f"*Appointment Time:* {_format_appt_time(record.get('Appointment Time', ''))}\n"
         f"*SRO:* {record.get('SRO', '')}\n"
         f"*Party Name 1:* {record.get('Party_Name 1', '')}\n"
         f"*Party 1 Mobile:* {record.get('Party_Name 1 Mobile_No', '')}\n"
