@@ -182,6 +182,15 @@ class SheetsManager:
                 title=TENTATIVE_TAB, rows=1000, cols=len(self.headers)
             )
 
+        # Every deleted row is copied here first, with where it was, who deleted it and when
+        try:
+            self.deleted_sheet = self.workbook.worksheet(DELETED_TAB)
+        except gspread.exceptions.WorksheetNotFound:
+            self.deleted_sheet = self.workbook.add_worksheet(
+                title=DELETED_TAB, rows=1000, cols=len(self.headers) + 3
+            )
+            self.deleted_sheet.append_row(self.headers + ["Deleted_From", "Deleted_By", "Deleted_At"])
+
         # Auto-create headers if a sheet is empty (must be after self.headers is set)
         self._ensure_headers(self.sheet)
         self._ensure_headers(self.tentative_sheet)
@@ -397,17 +406,12 @@ class SheetsManager:
         """Delete the record from whichever tab holds it (Sheet1 or Tentative Records).
         The full row is first copied to the Deleted Records tab with who and when.
         Returns the tab name it was deleted from, or None if it wasn't found."""
-        try:
-            deleted_ws = self.workbook.worksheet(DELETED_TAB)
-        except gspread.exceptions.WorksheetNotFound:
-            deleted_ws = self.workbook.add_worksheet(title=DELETED_TAB, rows=1000, cols=len(self.headers) + 3)
-            deleted_ws.append_row(self.headers + ["Deleted_From", "Deleted_By", "Deleted_At"])
         for ws in (self.sheet, self.tentative_sheet):
             cell = ws.find(str(entry_id), in_column=1)
             if not cell:
                 continue
             row = (ws.row_values(cell.row) + [""] * len(self.headers))[:len(self.headers)]
-            deleted_ws.append_row(row + [ws.title, str(deleted_by), datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            self.deleted_sheet.append_row(row + [ws.title, str(deleted_by), datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
                                   value_input_option="RAW")
             ws.delete_rows(cell.row)
             return ws.title

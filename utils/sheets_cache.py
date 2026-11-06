@@ -24,7 +24,7 @@ ADMIN_TTL = 30    # User_Requests + User_Activity_Log
 
 
 @st.cache_resource(show_spinner=False)
-def get_sheets_manager(v: int = 3) -> SheetsManager:
+def get_sheets_manager(v: int = 4) -> SheetsManager:
     # v= forces a cache-key change on deployments that add new SheetsManager methods
     return SheetsManager()
 

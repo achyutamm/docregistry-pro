@@ -145,6 +145,15 @@ def notify_pending_records_alert(over_30_records: list, over_30_count: int, tota
             pass
 
 
+def notify_record_deleted(record: dict, deleted_from: str, deleted_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_record_deleted as _wa
+            _wa(record, deleted_from, deleted_by)
+        except Exception:
+            pass
+
+
 def notify_tentative_overdue(records: list, total_tentative: int):
     if _whatsapp_enabled():
         try:

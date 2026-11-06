@@ -407,6 +407,32 @@ def notify_appointment_confirmed(record: dict):
     _send_group_or_queue(_drop_hidden_fields(text, record.get("doc_type")), record.get("entry_id", ""))
 
 
+def notify_record_deleted(record: dict, deleted_from: str, deleted_by: str):
+    """Tell the group a record was deleted. record uses the sheet's column names."""
+    if not _enabled():
+        return
+    text = (
+        "🗑️ *Record Deleted — DocRegistry Pro*\n\n"
+        f"*Deleted By:* {deleted_by}\n"
+        f"*Deleted From:* {deleted_from}\n\n"
+        f"*Entry ID:* {str(record.get('Entry_ID', '')).replace(',', '')}\n"
+        f"*Doc Type:* {record.get('Doc_Type', '')}\n"
+        f"*Appointment Date:* {record.get('Appointment Date', '')}\n"
+        f"*Appointment Time:* {record.get('Appointment Time', '')}\n"
+        f"*SRO:* {record.get('SRO', '')}\n"
+        f"*Party Name 1:* {record.get('Party_Name 1', '')}\n"
+        f"*Party 1 Mobile:* {record.get('Party_Name 1 Mobile_No', '')}\n"
+        f"*Party Name 2:* {record.get('Party_Name 2', '') or '—'}\n"
+        f"*GARVI App ID:* {record.get('Garvi_Application_ID', '')}\n"
+        f"*Index App No:* {record.get('Inedex_Application_No', '')}\n"
+        f"*Index No:* {record.get('Index_No', '')}\n"
+        f"*Search No:* {record.get('Search_No', '')}\n"
+        f"*Title Status:* {record.get('Title_Status', '')}\n"
+        f"*Created By:* {record.get('Created_By', '')}"
+    )
+    _send_group_or_queue(_drop_hidden_fields(text, record.get("Doc_Type")), str(record.get("Entry_ID", "")))
+
+
 def notify_tentative_overdue(records: list, total_tentative: int):
     """One message listing the records that reached another 15 days as tentative today."""
     if not _enabled():

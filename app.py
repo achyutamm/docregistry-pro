@@ -32,7 +32,7 @@ from utils.notification_router import (
     notify_appointment_confirmed, notify_today_appointments,
     notify_user_approved, notify_user_requested, notify_user_rejected,
     notify_role_changed, notify_config_access_changed, notify_user_deleted,
-    notify_record_updated, send_party1_checklist,
+    notify_record_updated, send_party1_checklist, notify_record_deleted,
 )
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
@@ -47,7 +47,7 @@ import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
 from utils.doc_fields import OPTIONAL_FIELDS, hidden_fields
-from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS, DELETED_TAB
+from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS, DELETED_TAB, TENTATIVE_TAB
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
@@ -129,7 +129,7 @@ STATUS_OPTIONS       = ["Pending", "In Progress", "Completed", "Rejected"]
 # =====================================================
 # AUTH
 # =====================================================
-auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=3))
+auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=4))
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
@@ -1524,9 +1524,15 @@ elif page == "🗑️ Delete Records":
                                     clear_history_cache()
                                 except Exception:
                                     pass
+                                notify_record_deleted(
+                                    use_english_names(_rec.to_dict()),
+                                    "Tentative Records" if _tab == TENTATIVE_TAB else "Sheet 1 (confirmed)",
+                                    username,
+                                )
                                 st.session_state["_delete_result"] = (
                                     "success", f"✅ Record {_eid} (GARVI {_garvi}) deleted from {_tab}. "
-                                               f"A copy is kept in the '{DELETED_TAB}' tab of the Google Sheet.")
+                                               f"A copy is kept in the '{DELETED_TAB}' tab of the Google Sheet, "
+                                               "and the group has been told on WhatsApp.")
                             else:
                                 st.session_state["_delete_result"] = (
                                     "error", f"❌ Record {_eid} was not found - it may already be deleted.")
