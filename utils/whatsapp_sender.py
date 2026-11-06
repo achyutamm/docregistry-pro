@@ -402,7 +402,7 @@ def notify_appointment_confirmed(record: dict):
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
         f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
-        f"*Entry Date:* {record.get('entry_date', '')}  *Entry Time:* {record.get('entry_time', '')}"
+        f"*Entry Date:* {record.get('entry_date', '')}"
     )
     _send_group_or_queue(_drop_hidden_fields(text, record.get("doc_type")), record.get("entry_id", ""))
 
