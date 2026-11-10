@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 230" role="img" aria-label="Registry building with a sealed document">
+  <defs>
+    <linearGradient id="col" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#2F4C7E"/><stop offset="0.55" stop-color="#3D5D94"/><stop offset="1" stop-color="#27416E"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0F4"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#E6C777"/><stop offset="1" stop-color="#BE9A45"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Building -->
+  <path d="M22 72 L118 20 L214 72 Z" fill="#27416E" stroke="#D4B25C" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="118" cy="52" r="7" fill="none" stroke="#D4B25C" stroke-width="2"/>
+  <rect x="22" y="72" width="192" height="11" fill="url(#gold)"/>
+  <rect x="30" y="83" width="176" height="5" fill="#1E3459"/>
+  <g fill="url(#col)">
+    <rect x="36" y="88" width="16" height="92"/>
+    <rect x="68" y="88" width="16" height="92"/>
+    <rect x="100" y="88" width="16" height="92"/>
+    <rect x="132" y="88" width="16" height="92"/>
+    <rect x="164" y="88" width="16" height="92"/>
+  </g>
+  <g fill="#E6C777" opacity=".85">
+    <rect x="33" y="88" width="22" height="3"/><rect x="65" y="88" width="22" height="3"/>
+    <rect x="97" y="88" width="22" height="3"/><rect x="129" y="88" width="22" height="3"/>
+    <rect x="161" y="88" width="22" height="3"/>
+    <rect x="33" y="177" width="22" height="3"/><rect x="65" y="177" width="22" height="3"/>
+    <rect x="97" y="177" width="22" height="3"/><rect x="129" y="177" width="22" height="3"/>
+    <rect x="161" y="177" width="22" height="3"/>
+  </g>
+  <rect x="22" y="180" width="192" height="8" fill="#27416E"/>
+  <rect x="12" y="188" width="212" height="8" fill="#203761"/>
+  <rect x="2" y="196" width="232" height="8" fill="url(#gold)"/>
+
+  <!-- Document -->
+  <g transform="rotate(5 205 140)">
+    <path d="M165 70 H231 L253 92 V206 H165 Z" fill="#0A1730" opacity=".35" transform="translate(5 6)"/>
+    <path d="M165 70 H231 L253 92 V206 H165 Z" fill="url(#paper)"/>
+    <path d="M231 70 V92 H253 Z" fill="#CBD2DE"/>
+    <rect x="176" y="84" width="42" height="5" rx="2.5" fill="#14284B"/>
+    <g fill="#A9B4C6">
+      <rect x="176" y="100" width="66" height="3" rx="1.5"/>
+      <rect x="176" y="110" width="66" height="3" rx="1.5"/>
+      <rect x="176" y="120" width="66" height="3" rx="1.5"/>
+      <rect x="176" y="130" width="66" height="3" rx="1.5"/>
+      <rect x="176" y="140" width="44" height="3" rx="1.5"/>
+    </g>
+    <!-- Signature -->
+    <path d="M176 186 c6 -12 10 -12 11 -4 c1 7 5 6 9 -2 c2 -4 4 -3 5 1 c1 3 3 3 6 1" fill="none" stroke="#14284B" stroke-width="1.6" stroke-linecap="round"/>
+    <!-- Seal -->
+    <path d="M220 186 l-6 22 l10 -6 l10 6 l-6 -22 Z" fill="#BE9A45"/>
+    <circle cx="224" cy="172" r="17" fill="url(#gold)"/>
+    <circle cx="224" cy="172" r="12.5" fill="none" stroke="#14284B" stroke-width="1.2" stroke-dasharray="2 2"/>
+    <path d="M217.5 172.5 l4.5 4.5 l8.5 -9.5" fill="none" stroke="#14284B" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

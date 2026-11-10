@@ -22,34 +22,38 @@ from utils.simple_auth import SimpleAuth
 from utils.password_utils import generate_temp_password
 from utils.sheets_cache import (
     get_sheets_manager,
-    get_all_records_cached, clear_records_cache,
+    get_all_records_cached, get_tentative_records_cached, get_every_record_cached, clear_records_cache,
     get_history_cached, clear_history_cache,
     get_user_requests_cached, clear_user_requests_cache,
     get_user_activity_log_cached, clear_user_activity_log_cache,
 )
 from utils.email_sender import notify_admins_new_request, notify_user_registration_received, notify_user_request_status, send_password_reminder
 from utils.notification_router import (
-    notify_new_entry, notify_today_appointments,
+    notify_appointment_confirmed, notify_today_appointments,
     notify_user_approved, notify_user_requested, notify_user_rejected,
     notify_role_changed, notify_config_access_changed, notify_user_deleted,
-    notify_record_updated,
+    notify_record_updated, send_party1_checklist, notify_record_deleted,
 )
 from utils.config_manager import (
     add_list_item, remove_list_item, add_sro_district, remove_sro_district,
     set_telegram_enabled, set_whatsapp_enabled, set_notifications_provider,
     set_whatsapp_contact_numbers,
     set_party1_checklist_enabled, set_party1_checklist_message, set_party1_checklist_items,
-    set_party1_checklist_test_mode,
+    set_party1_checklist_test_mode, set_transliteration, set_doc_type_hidden_fields,
 )
 from datetime import datetime, date, timedelta, time
 import yaml
 import pandas as pd
 from utils.date_utils import format_appt_date, parse_appt_date, parse_appt_date_series, appt_time_input
 from utils.calendar_view import render_calendar
-from utils.sheets_manager import number_lines
+from utils.doc_fields import OPTIONAL_FIELDS, hidden_fields
+from utils.sheets_manager import number_lines, is_tentative, with_days_tentative, TENTATIVE_ALERT_DAYS, DELETED_TAB, TENTATIVE_TAB
 from utils.ui_helpers import auto_number_textarea
 from utils import whatsapp_queue, whatsapp_sender
 from utils import phone_utils
+from utils import gujarati_translit
+from utils.gujarati_translit import use_english_names, use_english_changes
+from utils.ui_helpers import nav_options, login_side_panel, sidebar_theme
 from utils.app_env import CONFIG_FILE, IS_DEV
 
 # =====================================================
@@ -83,6 +87,7 @@ COL_DISPLAY = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appt. Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -124,10 +129,11 @@ STATUS_OPTIONS       = ["Pending", "In Progress", "Completed", "Rejected"]
 # =====================================================
 # AUTH
 # =====================================================
-auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=2))
+auth = SimpleAuth(CONFIG_FILE, cookie_manager=_cookie_manager, sheets_manager=get_sheets_manager(v=4))
 
 if not auth.is_authenticated():
     _app_cfg = config.get("app", {})
+    login_side_panel(_app_cfg.get("company", "BK Mehta & Associates"))
     st.title(f"🏛️ {_app_cfg.get('name', 'DocRegistry Pro')}")
     st.subheader(f"{_app_cfg.get('company', 'BK Mehta & Associates')} — {_app_cfg.get('tagline', 'Advocate Office Registry Management System')}")
 
@@ -283,21 +289,17 @@ username  = st.session_state.username
 # =====================================================
 # SIDEBAR — NAVIGATION
 # =====================================================
+sidebar_theme()
 st.sidebar.title("🏠 DocRegistry Pro")
 if IS_DEV:
     st.sidebar.warning("🧪 **DEV environment** — dev Google Sheet and dev WhatsApp only. Nothing here reaches live data or real clients.")
 st.sidebar.markdown(f"👋 **{user_info['name']}**")
 st.sidebar.markdown(f"Role: **{user_info['role'].title()}**")
 
-_nav = ["🏠 Dashboard", "📅 Calendar", "📝 New Entry", "🔍 Search Records", "✏️ Edit Records"]
-if user_info.get("role") == "admin":
-    _nav.append("👥 User Management")
-if user_info.get("config_access", False):
-    _nav.append("⚙️ Configuration")
+page = st.sidebar.radio("Navigation", nav_options(user_info), label_visibility="collapsed", key="nav_page")
 
-page = st.sidebar.radio("Navigation", _nav, label_visibility="collapsed", key="nav_page")
-
-if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True):
+# _logout_requested: Logout pressed on the New Entry page (the login cookie is handled here)
+if st.sidebar.button("🚪 Logout", type="primary", use_container_width=True) or st.session_state.pop("_logout_requested", False):
     auth.logout()
 
 # =====================================================
@@ -316,10 +318,30 @@ if page == "🏠 Dashboard":
     st.title("🏛️ Dashboard")
     st.markdown(f"👋 **Welcome back, {user_info['name']}!**  \nHere's a quick overview of appointments and recent registry activity.")
 
+    # Tentative records — waiting for their final date
+    st.divider()
+    _tent_df = get_tentative_records_cached(sheets_manager)
+    st.subheader(f"⏳ Tentative Records — Final Date Needed ({len(_tent_df)})")
+    if _tent_df.empty:
+        st.success("✅ No tentative records. Every entry has its final date.")
+    else:
+        _tent_df = with_days_tentative(_tent_df)
+        _tent_over = int((_tent_df["Days Tentative"] >= TENTATIVE_ALERT_DAYS).sum())
+        if _tent_over:
+            st.error(f"🚨 {_tent_over} record(s) tentative for {TENTATIVE_ALERT_DAYS} days or more. "
+                     "Please fix the final date.")
+        st.caption("Oldest first. When the final date is fixed, open the record in ✏️ Edit Records, set the "
+                   "date and time and press ✅ Confirm Appointment: it moves to the main sheet, and Party 1 "
+                   "and the group get their messages.")
+        _tent_cols = [c for c in ["Days Tentative", "Entry_ID", "Garvi_Application_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+                                  "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 2",
+                                  "Title_Status", "Created_By", "Entry_Date", "Remark"] if c in _tent_df.columns]
+        st.dataframe(display_df(_tent_df[_tent_cols]), use_container_width=True, hide_index=True)
+
     df = get_all_records_cached(sheets_manager)
 
     if df.empty:
-        st.info("No records available yet.")
+        st.info("No confirmed records yet.")
         st.stop()
 
     # Parsed Appointment Date for all date comparisons/sorting below — the column is
@@ -437,14 +459,15 @@ if page == "🏠 Dashboard":
     col2.metric("⏳ Pending",     len(filtered_df[filtered_df["Title_Status"].str.lower() == "pending"]))
     col3.metric("🔄 In Progress", len(filtered_df[filtered_df["Title_Status"].str.lower() == "in progress"]))
     col4.metric("✅ Completed",   len(filtered_df[filtered_df["Title_Status"].str.lower() == "completed"]))
-    st.bar_chart(filtered_df["Title_Status"].value_counts())
+    st.bar_chart(filtered_df["Title_Status"].replace("", "No Title Status").value_counts())
 
     # =========================================================
     # ENHANCEMENT 1 — PENDING RECORDS ALERT
     # =========================================================
     st.divider()
     st.subheader("⚠️ Pending Records Alert")
-    st.caption("All records currently in Pending status, sorted by oldest first.")
+    st.caption("All confirmed records currently in Pending status, sorted by oldest first "
+               "(tentative records are listed separately above).")
 
     pending_all = df[df["Title_Status"].str.lower() == "pending"].copy()
     pending_all["Entry_Date_dt"] = pd.to_datetime(pending_all["Entry_Date"], errors="coerce")
@@ -533,7 +556,8 @@ if page == "🏠 Dashboard":
 
             # Bar chart: records per day broken down by status
             trend = (
-                sel_month_df.groupby(["_day", "Title_Status"])
+                sel_month_df.assign(Title_Status=sel_month_df["Title_Status"].replace("", "No Title Status"))
+                .groupby(["_day", "Title_Status"])
                 .size()
                 .reset_index(name="Count")
                 .pivot(index="_day", columns="Title_Status", values="Count")
@@ -658,7 +682,7 @@ elif page == "🔍 Search Records":
     st.markdown("Search and filter registry entries from the database")
     st.divider()
 
-    df = get_all_records_cached(sheets_manager)
+    df = get_every_record_cached(sheets_manager)
 
     if df.empty:
         st.info("No records found in the database.")
@@ -718,6 +742,8 @@ elif page == "🔍 Search Records":
             filtered["Inedex_Application_No"].astype(str).str.lower().str.contains(kw, na=False) |
             filtered["Search_No"].astype(str).str.lower().str.contains(kw, na=False)
         )
+        if "Party_Name 1 Partners" in filtered.columns:
+            mask |= filtered["Party_Name 1 Partners"].astype(str).str.lower().str.contains(kw, na=False)
         filtered = filtered[mask]
 
     if status_filter:
@@ -766,10 +792,10 @@ elif page == "🔍 Search Records":
         st.info("No records match your search criteria.")
     else:
         display_cols = [
-            "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+            "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "Appointment_Status",
             "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
             "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
-            "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time"
+            "Search_No", "Title_Status", "Remark", "Created_By", "Entry_Date", "Entry_Time",
         ]
         display_cols = [c for c in display_cols if c in filtered.columns]
         result_df = filtered[display_cols].reset_index(drop=True)
@@ -801,6 +827,7 @@ elif page == "🔍 Search Records":
                 "Inedex_Application_No": "Index App. No.", "Index_No": "Index No.",
                 "Search_No": "Search No.", "Title_Status": "Title Status",
                 "Remark": "Remark", "Party_Name 1 Partners": "Party 1 Partners",
+                "Appointment_Status": "Appointment Status",
             }
             try:
                 h_df = get_history_cached(sheets_manager, selected_entry_id)
@@ -847,17 +874,43 @@ elif page == "✏️ Edit Records":
     st.markdown("Search by Entry ID or GARVI Application ID to load and update a record.")
     st.divider()
 
-    # Display save result message carried over from the post-save rerun
-    if "_edit_save_result" in st.session_state:
-        kind, msg = st.session_state.pop("_edit_save_result")
-        if kind == "success":
-            st.success(msg)
-        elif kind == "warning":
-            st.warning(msg)
-        else:
-            st.info(msg)
+    # The result of the last Save / Confirm opens as a pop-up, like New Entry
+    @st.dialog("✅ Record Saved", width="large")
+    def _edit_saved_popup(result, checklist, popup):
+        kind, msg = result
+        {"success": st.success, "warning": st.warning}.get(kind, st.info)(msg)
+        if checklist:
+            _cl_state, _cl_detail = checklist
+            if _cl_state == "sent":
+                st.success(f"📱 {_cl_detail}")
+            elif _cl_state == "queued":
+                st.warning(f"📥 {_cl_detail}")
+            elif _cl_state in ("not_on_whatsapp", "failed"):
+                st.error(f"⚠️ {_cl_detail}")
+            elif _cl_detail:
+                st.info(f"📱 WhatsApp to Party 1 not sent: {_cl_detail}")
+        if popup and popup["changes"]:
+            st.markdown("**What changed**")
+            st.dataframe(pd.DataFrame(popup["changes"], columns=["Field", "Before", "After"]),
+                         hide_index=True, use_container_width=True)
+        if popup:
+            st.markdown("**Record details**")
+            st.dataframe(pd.DataFrame(popup["details"], columns=["Field", "Value"]), hide_index=True,
+                         use_container_width=True, height=36 * (len(popup["details"]) + 1))
+        if st.button("OK", type="primary", use_container_width=True, key="edit_popup_ok"):
+            # Only now clear the page: empty search, ready for the next record
+            st.session_state["edit_form_key"] += 1
+            st.session_state.pop("_edit_loaded_id", None)
+            for _k in [k for k in st.session_state if str(k).startswith("e_")]:
+                del st.session_state[_k]
+            st.rerun()
 
-    df = get_all_records_cached(sheets_manager)
+    if "_edit_save_result" in st.session_state:
+        _edit_saved_popup(st.session_state.pop("_edit_save_result"),
+                          st.session_state.pop("_edit_checklist_result", None),
+                          st.session_state.pop("_edit_popup", None))
+
+    df = get_every_record_cached(sheets_manager)
 
     # Counter-based key so we can reset the widget after save
     if "edit_form_key" not in st.session_state:
@@ -878,7 +931,12 @@ elif page == "✏️ Edit Records":
         "Title_Status":           "Title Status",
         "Remark":                 "Remark",
         "Party_Name 1 Partners":  "Party 1 Partners",
+        "Appointment_Status":     "Appointment Status",
     }
+
+    def _appt_status(v):
+        """Sheet value → Confirmed / Tentative (blank on older rows = Confirmed)."""
+        return "Tentative" if is_tentative(v) else "Confirmed"
 
     def _norm_time(v):
         """Normalize any time representation to HH:MM:SS — handles "10:30", "10:30:00", and float fractions."""
@@ -955,6 +1013,7 @@ elif page == "✏️ Edit Records":
                     " · ".join(x for x in (
                         str(r.get("Entry_ID", "")).replace(",", ""), str(r.get("Party_Name 1", "")),
                         str(r.get("Doc_Type", "")), str(r.get("Appointment Date", "")), str(r.get("SRO", "")),
+                        "⏳ Tentative" if is_tentative(r.get("Appointment_Status")) else "",
                     ) if x): i
                     for i, r in match.iterrows()
                 }
@@ -990,11 +1049,19 @@ elif page == "✏️ Edit Records":
                     "Search_No":              str(edit_rec.get("Search_No", "")),
                     "Title_Status":           str(edit_rec.get("Title_Status", "")),
                     "Party_Name 1 Partners":  str(edit_rec.get("Party_Name 1 Partners", "") or ""),
+                    "Appointment_Status":     _appt_status(edit_rec.get("Appointment_Status", "")),
                 }
 
     if edit_rec is not None:
         party1_val = edit_rec.get("Party_Name 1", "")
         party2_val = edit_rec.get("Party_Name 2", "") or "—"
+        _rec_tentative = is_tentative(edit_rec.get("Appointment_Status", ""))
+        if _rec_tentative:
+            st.warning(
+                "⏳ **Tentative record** — once the final date is fixed, set the date and time below and "
+                "press **✅ Confirm Appointment**. The record then moves to the main sheet, and Party 1 "
+                "and the group get their WhatsApp messages. Saving without confirming sends nothing."
+            )
         st.success(
             f"Record loaded — "
             f"Party 1: **{party1_val}** | "
@@ -1045,7 +1112,13 @@ elif page == "✏️ Edit Records":
         def _on_edit_district_change():
             st.session_state["e_sro"] = None
 
-        ec1, ec2 = st.columns(2)
+        ec0, ec1, ec2 = st.columns(3)
+        with ec0:
+            e_doc_type = st.selectbox(
+                "Document Type *", DOCUMENT_TYPES,
+                index=safe_index(DOCUMENT_TYPES, edit_rec.get("Doc_Type", "")),
+                key="e_doc_type"
+            )
         with ec1:
             e_district = st.selectbox(
                 "District *",
@@ -1064,16 +1137,17 @@ elif page == "✏️ Edit Records":
                 key="e_sro"
             )
 
+        # A field this Document Type doesn't use is hidden, unless the record already holds
+        # a value there (older records must stay editable, e.g. to complete a Title Status).
+        _e_hidden = hidden_fields(config, e_doc_type)
+
+        def _e_show(field):
+            return field not in _e_hidden or bool(str(edit_rec.get(field, "") or "").strip())
+
         with st.form("edit_form"):
             st.markdown("### 📋 Entry Details")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
-                e_doc_type = st.selectbox(
-                    "Document Type *", DOCUMENT_TYPES,
-                    index=safe_index(DOCUMENT_TYPES, edit_rec.get("Doc_Type", "")),
-                    key="e_doc_type"
-                )
-            with c2:
                 e_date = st.date_input(
                     "Date *",
                     value=parse_appt_date(edit_rec.get("Appointment Date")) or date.today(),
@@ -1086,7 +1160,11 @@ elif page == "✏️ Edit Records":
                 _e_time_val = time(int(t_parts[0]), int(t_parts[1]))
             except Exception:
                 _e_time_val = time(10, 0)
-            e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
+            with c2:
+                e_time = appt_time_input("Time *", value=_e_time_val, key="e_time")
+            with c3:
+                st.text_input("Appointment Status",
+                              value="⏳ Tentative" if _rec_tentative else "✅ Confirmed", disabled=True)
 
             st.markdown("### 👥 Party Information")
             c1, c2 = st.columns(2)
@@ -1114,53 +1192,50 @@ elif page == "✏️ Edit Records":
                 placeholder="Click here and type the first partner name - press Enter for the next partner (1, 2, 3... are added automatically)",
                 key="e_partners",
                 height=100
-            )
+            ) if _e_show("Party_Name 1 Partners") else ""
 
             p2_opts = ["-- Select --"] + PARTY_NAME_2_OPTIONS
             e_party2 = st.selectbox(
                 "Party Name 2", p2_opts,
                 index=safe_index(p2_opts, edit_rec.get("Party_Name 2", "-- Select --")),
                 key="e_party2"
-            )
+            ) if _e_show("Party_Name 2") else "-- Select --"
 
-            st.markdown("### 📂 Application Details")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                e_garvi = st.text_input(
-                    "GARVI App. No.",
-                    value=str(edit_rec.get("Garvi_Application_ID", "")),
-                    placeholder="ex. 20261100843645",
-                    key="e_garvi"
-                )
-            with c2:
-                e_index_appli = st.text_input(
-                    "Index App. No.",
-                    value=str(edit_rec.get("Inedex_Application_No", "")),
-                    placeholder="ex. 80120260372851",
-                    key="e_index_appli"
-                )
-            with c3:
-                e_search = st.text_input(
-                    "Search No.",
-                    value=str(edit_rec.get("Search_No", "")),
-                    placeholder="ex. 202612030719415",
-                    key="e_search"
-                )
-
-            c1, c2 = st.columns(2)
-            with c1:
-                e_index_no = st.text_input(
-                    "Index No.",
-                    value=str(edit_rec.get("Index_No", "")),
-                    placeholder="ex. 9729-2026",
-                    key="e_index_no"
-                )
-            with c2:
-                e_status = st.selectbox(
-                    "Title Status *", STATUS_OPTIONS,
-                    index=safe_index(STATUS_OPTIONS, edit_rec.get("Title_Status", "Pending")),
-                    key="e_status"
-                )
+            _e_row1 = [f for f in ("Garvi_Application_ID", "Inedex_Application_No", "Search_No") if _e_show(f)]
+            _e_row2 = [f for f in ("Index_No", "Title_Status") if _e_show(f)]
+            if _e_row1 or _e_row2:
+                st.markdown("### 📂 Application Details")
+            _e_cols = {**(dict(zip(_e_row1, st.columns(len(_e_row1)))) if _e_row1 else {}),
+                       **(dict(zip(_e_row2, st.columns(len(_e_row2)))) if _e_row2 else {})}
+            e_garvi = _e_cols["Garvi_Application_ID"].text_input(
+                "GARVI App. No.",
+                value=str(edit_rec.get("Garvi_Application_ID", "")),
+                placeholder="ex. 20261100843645",
+                key="e_garvi"
+            ) if "Garvi_Application_ID" in _e_cols else ""
+            e_index_appli = _e_cols["Inedex_Application_No"].text_input(
+                "Index App. No.",
+                value=str(edit_rec.get("Inedex_Application_No", "")),
+                placeholder="ex. 80120260372851",
+                key="e_index_appli"
+            ) if "Inedex_Application_No" in _e_cols else ""
+            e_search = _e_cols["Search_No"].text_input(
+                "Search No.",
+                value=str(edit_rec.get("Search_No", "")),
+                placeholder="ex. 202612030719415",
+                key="e_search"
+            ) if "Search_No" in _e_cols else ""
+            e_index_no = _e_cols["Index_No"].text_input(
+                "Index No.",
+                value=str(edit_rec.get("Index_No", "")),
+                placeholder="ex. 9729-2026",
+                key="e_index_no"
+            ) if "Index_No" in _e_cols else ""
+            e_status = _e_cols["Title_Status"].selectbox(
+                "Title Status *", STATUS_OPTIONS,
+                index=safe_index(STATUS_OPTIONS, edit_rec.get("Title_Status", "Pending")),
+                key="e_status"
+            ) if "Title_Status" in _e_cols else ""
 
             e_remark = st.text_area(
                 "Remark",
@@ -1168,10 +1243,17 @@ elif page == "✏️ Edit Records":
                 placeholder="Any additional notes or remarks...",
                 key="e_remark",
                 height=80
-            )
+            ) if _e_show("Remark") else ""
 
             st.markdown("---")
-            save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+            confirm_btn = False
+            if _rec_tentative:
+                _b1, _b2 = st.columns(2)
+                save_btn = _b1.form_submit_button("💾 Save (stays Tentative)", use_container_width=True)
+                confirm_btn = _b2.form_submit_button("✅ Confirm Appointment & Send WhatsApp",
+                                                     type="primary", use_container_width=True)
+            else:
+                save_btn = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
 
         # Live 1, 2, 3… numbering in the Party 1 Partners box while typing
         auto_number_textarea("Party 1 Partners")
@@ -1187,18 +1269,27 @@ elif page == "✏️ Edit Records":
                 st.session_state["edit_form_key"] += 1
                 st.rerun()
 
-        if save_btn:
+        if save_btn or confirm_btn:
+            e_appt_status = "Tentative" if _rec_tentative and not confirm_btn else "Confirmed"
             e_district = st.session_state.get("e_district", "")
             e_sro      = st.session_state.get("e_sro", "")
             if not e_party1.strip():
                 st.error("❌ Party Name 1 is required.")
             elif phone_utils.validate(e_party1_cc, e_party1_number):
                 st.error(f"❌ Party 1 Mobile No: {phone_utils.validate(e_party1_cc, e_party1_number)}")
+            elif confirm_btn and not e_party1_number.strip():
+                st.error("❌ Enter Party 1 Mobile No before confirming - the WhatsApp checklist is sent to this number.")
             else:
                 try:
                     new_party2 = e_party2 if e_party2 != "-- Select --" else ""
+                    # Gujarati names without English yet get it added: "Gujarati (English)".
+                    # A name that already has its English in brackets is saved as typed.
+                    if gujarati_translit.settings()["enabled"]:
+                        e_party1   = gujarati_translit.with_english(e_party1.strip())
+                        e_partners = gujarati_translit.with_english(number_lines(e_partners))
 
-                    ok = sheets_manager.update_record(
+                    _write = sheets_manager.confirm_record if confirm_btn else sheets_manager.update_record
+                    ok = _write(
                         entry_id=real_entry_id,
                         doc_type=e_doc_type,
                         appointment_date=format_appt_date(e_date),
@@ -1238,6 +1329,7 @@ elif page == "✏️ Edit Records":
                             ("Title_Status",           _snap.get("Title_Status",           str(edit_rec.get("Title_Status", ""))),           e_status),
                             ("Remark",                 _snap.get("Remark",                 str(edit_rec.get("Remark", "") or "")),             e_remark.strip()),
                             ("Party_Name 1 Partners",  _snap.get("Party_Name 1 Partners",  str(edit_rec.get("Party_Name 1 Partners", "") or "")),  number_lines(e_partners)),
+                            ("Appointment_Status",     _snap.get("Appointment_Status",     _appt_status(edit_rec.get("Appointment_Status", ""))),  e_appt_status),
                         ]
                         changes = [(f, old, new) for f, old, new in field_map if old != new]
 
@@ -1258,9 +1350,12 @@ elif page == "✏️ Edit Records":
                             "Title_Status":           e_status,
                             "Remark":                 e_remark.strip(),
                             "Party_Name 1 Partners":  number_lines(e_partners),
+                            "Appointment_Status":     e_appt_status,
                         }
 
                         if changes:
+                            _status_note = (" Appointment confirmed and moved to the main sheet." if confirm_btn
+                                            else " Still Tentative — no WhatsApp sent." if _rec_tentative else "")
                             try:
                                 sheets_manager.log_history(real_entry_id, username, changes)
                                 clear_history_cache()
@@ -1269,6 +1364,7 @@ elif page == "✏️ Edit Records":
                                     "success",
                                     f"✅ Record **{real_entry_id}** saved. "
                                     f"**{len(changes)} field(s)** changed — edit history updated below."
+                                    f"{_status_note}"
                                 )
                             except Exception as log_ex:
                                 st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
@@ -1276,7 +1372,7 @@ elif page == "✏️ Edit Records":
                                     "warning",
                                     f"⚠️ Record saved to sheet but history logging failed: {log_ex}"
                                 )
-                            # WhatsApp notification — build record dict from saved values
+                            # Tentative records stay silent; confirming announces them below
                             try:
                                 _updated_record = {
                                     "Doc_Type":               e_doc_type,
@@ -1293,15 +1389,52 @@ elif page == "✏️ Edit Records":
                                     "Title_Status":           e_status,
                                     "Remark":                 e_remark.strip(),
                                     "Party_Name 1 Partners":  number_lines(e_partners),
+                                    "Appointment_Status":     e_appt_status,
                                 }
-                                notify_record_updated(
-                                    entry_id=real_entry_id,
-                                    record=_updated_record,
-                                    changes=changes,
-                                    updated_by=username,
-                                )
+                                if not _rec_tentative:
+                                    notify_record_updated(
+                                        entry_id=real_entry_id,
+                                        record=use_english_names(_updated_record),
+                                        changes=use_english_changes(changes),
+                                        updated_by=username,
+                                    )
                             except Exception:
                                 pass
+                            if confirm_btn:
+                                _confirmed_record = {
+                                    "entry_id":             real_entry_id,
+                                    "doc_type":             e_doc_type,
+                                    "appointment_date":     format_appt_date(e_date),
+                                    "appointment_time":     str(e_time),
+                                    "sro":                  e_sro,
+                                    "party_name_1":         gujarati_translit.english_only(e_party1),
+                                    "party1_mobile":        e_party1_mobile.strip(),
+                                    "party1_partners":      gujarati_translit.english_only(number_lines(e_partners)),
+                                    "party_name_2":         new_party2,
+                                    "garvi_application_id": e_garvi.strip(),
+                                    "index_application_no": e_index_appli.strip(),
+                                    "index_no":             e_index_no.strip(),
+                                    "search_no":            e_search.strip(),
+                                    "title_status":         e_status,
+                                    "remark":               e_remark.strip(),
+                                    "created_by":           str(edit_rec.get("Created_By", "")),
+                                    "entry_date":           str(edit_rec.get("Entry_Date", "")),
+                                    "entry_time":           str(edit_rec.get("Entry_Time", "")),
+                                    "confirmed_by":         username,
+                                }
+                                if e_date < date.today():
+                                    # Party 1 can't act on a list of documents for a date already gone
+                                    _cl_status = ("skipped", f"the date {format_appt_date(e_date)} is in the past.")
+                                else:
+                                    with st.spinner("📱 Appointment confirmed — sending WhatsApp checklist to Party 1..."):
+                                        _cl_status = send_party1_checklist(_confirmed_record)
+                                notify_appointment_confirmed(_confirmed_record)
+                                st.session_state["_edit_checklist_result"] = _cl_status
+                                if _cl_status[0] == "sent":
+                                    try:
+                                        whatsapp_queue.flush()
+                                    except Exception:
+                                        pass
                         else:
                             st.toast(f"✅ Record {real_entry_id} updated!", icon="✅")
                             st.session_state["_edit_save_result"] = (
@@ -1309,6 +1442,15 @@ elif page == "✏️ Edit Records":
                                 "ℹ️ Record saved. No field values were changed — history not updated."
                             )
 
+                        # Pop-up details: what changed, and the record as saved (fields this
+                        # Document Type doesn't use are left out when empty)
+                        _shown = {f for f, _, new in field_map if _e_show(f) or str(new).strip()}
+                        st.session_state["_edit_popup"] = {
+                            "changes": [(FIELD_LABELS.get(f, f), str(old), str(new)) for f, old, new in changes],
+                            "details": [("Entry ID", real_entry_id)]
+                                       + [(FIELD_LABELS.get(f, f), str(new)) for f, _, new in field_map if f in _shown]
+                                       + [("Created By", str(edit_rec.get("Created_By", "")))],
+                        }
                         st.rerun()
                     else:
                         st.error(f"❌ Record not found in Google Sheets (Entry ID: `{real_entry_id}`).")
@@ -1364,6 +1506,68 @@ elif page == "✏️ Edit Records":
 # =====================================================
 # USER MANAGEMENT (ADMIN ONLY)
 # =====================================================
+elif page == "🗑️ Delete Records":
+
+    st.title("🗑️ Delete Records")
+    st.markdown("Search by GARVI Application ID, check the record, then delete it. "
+                "It is removed from Sheet 1 or Tentative Records, wherever it is.")
+    st.divider()
+
+    if "_delete_result" in st.session_state:
+        _kind, _msg = st.session_state.pop("_delete_result")
+        (st.success if _kind == "success" else st.error)(_msg)
+
+    _garvi = st.text_input("GARVI Application ID", placeholder="e.g., 20261100843645",
+                           key=f"del_garvi_{st.session_state.get('del_key', 0)}").strip().replace(",", "")
+    if _garvi:
+        _all = get_every_record_cached(sheets_manager)
+        _match = (_all[_all["Garvi_Application_ID"].astype(str).str.replace(",", "", regex=False).str.strip() == _garvi]
+                  if not _all.empty and "Garvi_Application_ID" in _all.columns else _all)
+        if _match.empty:
+            st.warning(f"No record found with GARVI Application ID `{_garvi}`.")
+        else:
+            if len(_match) > 1:
+                st.info(f"{len(_match)} records have this GARVI Application ID. Check each one; delete only the one you mean.")
+            for _, _rec in _match.iterrows():
+                _eid = str(_rec.get("Entry_ID", "")).replace(",", "")
+                _where = "Tentative Records" if is_tentative(_rec.get("Appointment_Status")) else "Sheet 1 (confirmed)"
+                with st.container(border=True):
+                    st.markdown(f"#### Entry ID {_eid} · in **{_where}**")
+                    _details = display_df(_rec.to_frame().T)
+                    st.dataframe(
+                        pd.DataFrame({"Field": _details.columns,
+                                      "Value": [str(v) for v in _details.iloc[0].tolist()]}),
+                        hide_index=True, use_container_width=True, height=36 * (len(_details.columns) + 1),
+                    )
+                    _sure = st.checkbox("I have checked all the details above and want to delete this record",
+                                        key=f"del_sure_{_eid}")
+                    if st.button("🗑️ Delete this record", key=f"del_btn_{_eid}", type="primary", disabled=not _sure):
+                        try:
+                            _tab = sheets_manager.delete_record(_eid, username)
+                            if _tab:
+                                try:
+                                    sheets_manager.log_history(_eid, username, [("Record Deleted", f"in {_tab}", "")])
+                                    clear_history_cache()
+                                except Exception:
+                                    pass
+                                notify_record_deleted(
+                                    use_english_names(_rec.to_dict()),
+                                    "Tentative Records" if _tab == TENTATIVE_TAB else "Sheet 1 (confirmed)",
+                                    username,
+                                )
+                                st.session_state["_delete_result"] = (
+                                    "success", f"✅ Record {_eid} (GARVI {_garvi}) deleted from {_tab}. "
+                                               f"A copy is kept in the '{DELETED_TAB}' tab of the Google Sheet, "
+                                               "and the group has been told on WhatsApp.")
+                            else:
+                                st.session_state["_delete_result"] = (
+                                    "error", f"❌ Record {_eid} was not found - it may already be deleted.")
+                        except Exception as ex:
+                            st.session_state["_delete_result"] = ("error", f"❌ Could not delete record {_eid}: {ex}")
+                        clear_records_cache()
+                        st.session_state["del_key"] = st.session_state.get("del_key", 0) + 1
+                        st.rerun()
+
 elif page == "👥 User Management":
 
     st.title("👥 User Management")
@@ -1770,6 +1974,7 @@ elif page == "⚙️ Configuration":
         "telegram":  "📢 Telegram",
         "whatsapp":  "📱 WhatsApp",
         "checklist": "📋 Doc Checklist",
+        "names":     "🔤 Gujarati Names",
     }
     _cfg_tab_cols = st.columns(len(_cfg_tabs))
     for _cfg_col, (_cfg_key, _cfg_label) in zip(_cfg_tab_cols, _cfg_tabs.items()):
@@ -1791,6 +1996,33 @@ elif page == "⚙️ Configuration":
             "Controls the 'Document Type' dropdown on the New Entry form.",
             "doctype", "Document Types"
         )
+
+        st.divider()
+        st.subheader("Fields on the Form")
+        st.caption(
+            "Tick the fields each Document Type uses in New Entry and Edit Records; untick to remove one. "
+            "A removed field is saved blank. Older records that already hold a value there still show it in "
+            "Edit Records. Document Type, District, SRO, Date, Time, Party Name 1, Party 1 Mobile No and GARVI "
+            "Application No are "
+            "always on the form."
+        )
+        _ff_rows = pd.DataFrame([
+            {"Document Type": _dt, **{_lbl: _f not in hidden_fields(config, _dt)
+                                      for _f, _lbl in OPTIONAL_FIELDS.items()}}
+            for _dt in DOCUMENT_TYPES
+        ])
+        _ff_edit = st.data_editor(
+            _ff_rows, use_container_width=True, hide_index=True, disabled=["Document Type"],
+            key=f"cfg_ff_rows_{st.session_state['cfg_widget_key']}",
+        )
+        if st.button("💾 Save", key="cfg_ff_save", type="primary"):
+            set_doc_type_hidden_fields({
+                _r["Document Type"]: [_f for _f, _lbl in OPTIONAL_FIELDS.items() if not _r[_lbl]]
+                for _r in _ff_edit.to_dict("records")
+            })
+            st.session_state["cfg_flash"] = ("success", "✅ Form fields saved.")
+            st.session_state["cfg_widget_key"] += 1
+            st.rerun()
 
     elif _active_cfg_tab == "party2":
         st.subheader("Party Name 2 (Banks / Co-operatives)")
@@ -2020,12 +2252,63 @@ elif page == "⚙️ Configuration":
             if not _wa_up:
                 st.caption("Sending is disabled until the WhatsApp service is connected again.")
 
+    elif _active_cfg_tab == "names":
+        st.subheader("Gujarati → English Names")
+        st.caption(
+            "When Party Name 1 or Party 1 Partners is typed in Gujarati, the app adds the English next to "
+            "it in the same cell: અવિનાશભાઈ શીવરામભાઈ પંચાલ (Avinashbhai Shivrambhai Panchal). Partners "
+            "are done line by line. WhatsApp messages (group, Party 1 checklist, reminders) show only the "
+            "English. The conversion runs inside the app — no outside service."
+        )
+        _xl_cfg = config.get("transliteration", {}) or {}
+        _wk = st.session_state["cfg_widget_key"]
+        _xl_enabled = st.checkbox("Convert Gujarati names to English",
+                                  value=bool(_xl_cfg.get("enabled", True)), key=f"cfg_xl_enabled_{_wk}")
+        _xl_modes = ["Staff check the English name before saving", "Save the English name automatically"]
+        _xl_mode = st.radio(
+            "On New Entry", _xl_modes, index=0 if _xl_cfg.get("review_before_save", True) else 1,
+            key=f"cfg_xl_mode_{_wk}", disabled=not _xl_enabled,
+            help="Check: after Submit, staff see the English spelling and can correct it before the entry "
+                 "is saved. Automatically: the entry is saved straight away with the converted name.",
+        )
+
+        st.markdown("#### ✏️ Spelling corrections")
+        st.caption(
+            "Words that should always be written a certain way, e.g. મહેતા → Mehta, મે. → M/s. "
+            "One Gujarati word per row. Built in already: "
+            + ", ".join(f"{g} → {e}" for g, e in gujarati_translit.SPELLINGS.items())
+        )
+        _xl_rows = pd.DataFrame(_xl_cfg.get("corrections") or [], columns=["gujarati", "english"])
+        _xl_edit = st.data_editor(
+            _xl_rows, num_rows="dynamic", use_container_width=True, hide_index=True,
+            column_config={"gujarati": st.column_config.TextColumn("Gujarati word"),
+                           "english": st.column_config.TextColumn("English spelling")},
+            key=f"cfg_xl_rows_{_wk}",
+        )
+
+        _xl_try = st.text_input("🔎 Try a name", placeholder="Type or paste a Gujarati name",
+                                key=f"cfg_xl_try_{_wk}")
+        if _xl_try.strip():
+            _xl_draft = {str(r.get("gujarati") or "").strip(): str(r.get("english") or "").strip()
+                         for r in _xl_edit.to_dict("records")
+                         if str(r.get("gujarati") or "").strip() and str(r.get("english") or "").strip()}
+            st.success(f"**{gujarati_translit.to_english(_xl_try.strip(), _xl_draft)}**")
+
+        if st.button("💾 Save", key="cfg_xl_save", type="primary"):
+            try:
+                set_transliteration(_xl_enabled, _xl_mode == _xl_modes[0], _xl_edit.to_dict("records"))
+                st.session_state["cfg_flash"] = ("success", "✅ Gujarati name settings saved.")
+                st.session_state["cfg_widget_key"] += 1
+                st.rerun()
+            except ValueError as ex:
+                st.error(f"❌ {ex}")
+
     elif _active_cfg_tab == "checklist":
         from utils.whatsapp_sender import party1_checklist_items, render_party1_checklist, send_direct_message
 
         st.subheader("Party 1 Document Checklist")
         st.caption(
-            "When a new entry is saved, a WhatsApp message is sent to the **Party 1 Mobile No** "
+            "When an appointment is confirmed in Edit Records, a WhatsApp message is sent to the **Party 1 Mobile No** "
             "listing the documents to bring for that Document Type. Pick a Document Type below "
             "to see or change its documents."
         )
@@ -2034,7 +2317,7 @@ elif page == "⚙️ Configuration":
         _p1_default = _p1_cfg.get("default_items", []) or []
 
         _p1_enabled = st.checkbox(
-            "Send checklist message to Party 1 on New Entry",
+            "Send checklist message to Party 1 when an appointment is confirmed",
             value=bool(_p1_cfg.get("enabled", False)), key="cfg_p1_enabled"
         )
         if st.button("💾 Save", key="cfg_p1_enabled_save"):
@@ -2145,18 +2428,13 @@ elif page == "⚙️ Configuration":
             "`{checklist}` is replaced by the numbered document list. Other placeholders: "
             "`{party_name_1}` `{party_name_2}` (its line is left out when the entry has no Party 2) "
             "`{doc_type}` `{appointment_date}` `{appointment_time}` "
-            "`{sro}` `{entry_id}` `{company}` · `{partners}` adds the partner names (with the heading "
-            "below) only when the entry has Party 1 Partners · `{contact_numbers}` = the office numbers from "
+            "`{sro}` `{entry_id}` `{company}` · `{partners}` lists the Party 1 Partners as Party 1: name, "
+            "Party 2: name… (left out when there are none) · `{contact_numbers}` = the office numbers from "
             "Configuration → WhatsApp (a line using it is left out if none are set) · `*bold*` works on WhatsApp."
-        )
-        _p1_heading = st.text_input(
-            "Heading shown above partner names",
-            value=str(_p1_cfg.get("partners_heading", "") or "Partners"),
-            placeholder="e.g. Partners", key=f"cfg_p1_heading_{cfgk}",
         )
         if st.button("💾 Save Message", key="cfg_p1_msg_save"):
             try:
-                set_party1_checklist_message(_p1_msg, _p1_heading)
+                set_party1_checklist_message(_p1_msg)
                 st.session_state["cfg_flash"] = ("success", "✅ Checklist message wording saved.")
                 st.session_state["cfg_widget_key"] += 1
                 st.rerun()
@@ -2168,8 +2446,7 @@ elif page == "⚙️ Configuration":
         # ── Preview + test (uses the unsaved edits above) ───────────────
         _p1_preview_type = _p1_sel
         _p1_draft_items = {**_p1_items, _p1_sel: _p1_new_items}
-        _p1_draft_cfg = {"message": _p1_msg, "items": _p1_draft_items, "default_items": _p1_default,
-                         "partners_heading": _p1_heading}
+        _p1_draft_cfg = {"message": _p1_msg, "items": _p1_draft_items, "default_items": _p1_default}
         _p1_sample = {
             "entry_id": "ENT-PREVIEW", "doc_type": _p1_preview_type,
             "appointment_date": date.today().strftime("%d/%m/%Y"), "appointment_time": "11:30:00",

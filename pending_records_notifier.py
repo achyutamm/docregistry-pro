@@ -1,23 +1,24 @@
 """
-Standalone pending-records alert for DocRegistry Pro.
+Standalone group alerts for DocRegistry Pro.
 
-Mirrors the Dashboard's "Pending Records Alert" panel: records currently in
-Pending status, with Days Pending = today - Entry_Date. Only messages the
-WhatsApp/Telegram group when at least one record has been pending for over
-30 days, to avoid noise on quiet weeks.
+--tentative (runs daily via GitHub Actions): each record still in the Tentative
+Records tab is listed on the day it reaches 15, 30, 45... days since it was saved.
 
-Runs via GitHub Actions on a weekly schedule.
+Without --tentative: records Pending for over 30 days. This weekly alert is no
+longer scheduled (client decision); it can still be run by hand.
 
 Usage:
     python pending_records_notifier.py
+    python pending_records_notifier.py --tentative
 """
 
 import sys
 import time
 import pandas as pd
 
-from utils.sheets_manager import SheetsManager
-from utils.notification_router import notify_pending_records_alert
+from utils.sheets_manager import SheetsManager, with_days_tentative, TENTATIVE_ALERT_DAYS
+from utils.notification_router import notify_pending_records_alert, notify_tentative_overdue
+from utils.gujarati_translit import use_english_names
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # seconds between retries
@@ -49,18 +50,37 @@ def run():
         return
 
     notify_pending_records_alert(
-        over_30.to_dict("records"),
+        [use_english_names(r) for r in over_30.to_dict("records")],
         len(over_30),
         len(long_pending),
     )
     print("Alert sent.")
 
 
+def run_tentative():
+    df = SheetsManager().get_tentative_records()
+    if df.empty:
+        print("No tentative records. Nothing to send.")
+        return
+
+    df = with_days_tentative(df)
+    days = df["Days Tentative"]
+    due = df[((days > 0) & (days % TENTATIVE_ALERT_DAYS == 0)).fillna(False)]
+    print(f"{len(due)} record(s) due a reminder today — {len(df)} tentative total.")
+    if due.empty:
+        print("None due — no reminder sent.")
+        return
+
+    notify_tentative_overdue([use_english_names(r) for r in due.to_dict("records")], len(df))
+    print("Reminder sent.")
+
+
 def main():
+    job = run_tentative if "--tentative" in sys.argv[1:] else run
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            run()
+            job()
             return
         except Exception as e:
             last_error = e

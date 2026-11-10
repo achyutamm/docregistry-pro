@@ -16,8 +16,10 @@ document_types:
 duplicate_check:
   enabled: true
   fields:
-  - Garvi_Application_ID
-  mode: AND
+  - Doc_Type
+  - Party_Name 1
+  - Appointment Date
+  - SRO
 email:
   admin_emails:
   - bkmehta.associate@gmail.com
@@ -212,3 +214,31 @@ whatsapp:
   provider: baileys
   recipient_numbers:
   - '+919824551099'
+doc_type_hidden_fields:
+  Sale Deed:
+  - Search_No
+  - Title_Status
+  Release:
+  - Search_No
+  - Title_Status
+  Release Deed:
+  - Search_No
+  - Title_Status
+  Lease Agreement:
+  - Search_No
+  - Title_Status
+  Rent Agreement:
+  - Search_No
+  - Title_Status
+  Power of Attorney:
+  - Search_No
+  - Title_Status
+  Hak-Kami (Dispose of rights):
+  - Search_No
+  - Title_Status
+  Mortgage Extension:
+  - Search_No
+  - Title_Status
+  Agreement of Sale (Banakhat):
+  - Search_No
+  - Title_Status

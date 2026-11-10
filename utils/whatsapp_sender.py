@@ -6,6 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from utils import phone_utils
+from utils.doc_fields import hidden_fields
 from utils.app_env import CONFIG_FILE
 
 load_dotenv()
@@ -228,11 +229,13 @@ def render_party1_checklist(checklist_cfg: dict, record: dict, company: str = ""
     values["appointment_time"] = _format_appt_time(record.get("appointment_time", ""))
     values["party_name_2"] = party2
     values["checklist"] = "\n".join(f"{n}. {item}" for n, item in enumerate(items, 1))
-    # {partners} is a whole block (heading + names) when Party 1 has partners,
-    # and empty otherwise — so the template needs no extra blank-line handling.
-    partners = str(record.get("party1_partners", "") or "").strip()
-    heading = str(checklist_cfg.get("partners_heading", "") or "").strip().rstrip(":").strip() or "Partners"
-    values["partners"] = f"\n*{heading}:*\n{partners}\n" if partners else ""
+    # {partners} is a whole block when Party 1 has partners - "Party 1: name", "Party 2: name"... -
+    # and empty otherwise, so the template needs no extra blank-line handling.
+    names = [re.sub(r"^\s*\d+(?:\s*[.)\-:]\s*|\s+|$)", "", line).strip()
+             for line in str(record.get("party1_partners", "") or "").splitlines()]
+    names = [n for n in names if n]
+    values["partners"] = ("\n" + "\n".join(f"Party {n}: {name}" for n, name in enumerate(names, 1)) + "\n"
+                          if names else "")
     values["contact_numbers"] = contacts
     values.setdefault("company", company)
     # Optional blocks ({partners}, a dropped contact line) can leave extra blank lines
@@ -331,7 +334,50 @@ def test_recipients(p1_cfg: dict) -> list:
     return out
 
 
-def notify_new_entry(record: dict):
+# Labels the group messages use for the optional form fields
+_MESSAGE_LABELS = {
+    "Party_Name 2":          ("Party Name 2", "Party 2"),
+    "Garvi_Application_ID":  ("GARVI App ID",),
+    "Inedex_Application_No": ("Index App No",),
+    "Search_No":             ("Search No",),
+    "Index_No":              ("Index No",),
+    "Title_Status":          ("Title Status", "Status"),
+    "Remark":                ("Remark",),
+}
+
+
+def _drop_hidden_fields(text: str, doc_type) -> str:
+    """Leave out empty lines for fields this Document Type doesn't use.
+    A hidden field that does hold a value (older records) stays in the message."""
+    labels = [l for f in hidden_fields(_full_config(), doc_type) for l in _MESSAGE_LABELS.get(f, ())]
+    if not labels:
+        return text
+    empty = re.compile(r"\*(?:" + "|".join(map(re.escape, labels)) + r"):\*[ ]*(?:—[ ]*)?(?=  |$)")
+    lines = []
+    for line in text.split("\n"):
+        kept = empty.sub("", line)
+        if kept == line:
+            lines.append(line)
+        elif kept.strip():
+            lines.append(kept.strip())
+    return "\n".join(lines)
+
+
+def _send_group_or_queue(text: str, entry_id: str = ""):
+    """Send to the group; if WhatsApp is down, keep the message and send it when it's back."""
+    try:
+        send_whatsapp_message(text)
+    except WhatsAppUnavailable as ex:
+        try:
+            from utils import whatsapp_queue
+            whatsapp_queue.enqueue(whatsapp_queue.KIND_GROUP, "", text, entry_id, str(ex))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def notify_appointment_confirmed(record: dict):
     if not _enabled():
         return
 
@@ -340,7 +386,8 @@ def notify_new_entry(record: dict):
         f"*Entry ID:* {record.get('entry_id', '')}\n"
         f"*Doc Type:* {record.get('doc_type', '')}\n"
         f"*Appointment Date:* {record.get('appointment_date', '')}\n"
-        f"*Appointment Time:* {record.get('appointment_time', '')}\n"
+        f"*Appointment Time:* {_format_appt_time(record.get('appointment_time', ''))}\n"
+        "*Appointment Status:* ✅ Confirmed\n"
         f"*SRO:* {record.get('sro', '')}\n"
         f"*Party Name 1:* {record.get('party_name_1', '')}\n"
         f"*Party 1 Mobile:* {record.get('party1_mobile', '')}\n"
@@ -354,20 +401,58 @@ def notify_new_entry(record: dict):
         f"*Title Status:* {record.get('title_status', '')}\n"
         f"*Remark:* {record.get('remark', '') or '—'}\n"
         f"*Created By:* {record.get('created_by', '')}\n"
-        f"*Entry Date:* {record.get('entry_date', '')}  *Time:* {record.get('entry_time', '')}"
+        f"*Confirmed By:* {record.get('confirmed_by', '')}\n"
+        f"*Entry Date:* {record.get('entry_date', '')}"
     )
+    _send_group_or_queue(_drop_hidden_fields(text, record.get("doc_type")), record.get("entry_id", ""))
 
-    try:
-        send_whatsapp_message(text)
-    except WhatsAppUnavailable as ex:
-        # Keep the group announcement and send it when WhatsApp is back
-        try:
-            from utils import whatsapp_queue
-            whatsapp_queue.enqueue(whatsapp_queue.KIND_GROUP, "", text, record.get("entry_id", ""), str(ex))
-        except Exception:
-            pass
-    except Exception:
-        pass
+
+def notify_record_deleted(record: dict, deleted_from: str, deleted_by: str):
+    """Tell the group a record was deleted. record uses the sheet's column names."""
+    if not _enabled():
+        return
+    text = (
+        "🗑️ *Record Deleted — DocRegistry Pro*\n\n"
+        f"*Deleted By:* {deleted_by}\n"
+        f"*Deleted From:* {deleted_from}\n\n"
+        f"*Entry ID:* {str(record.get('Entry_ID', '')).replace(',', '')}\n"
+        f"*Doc Type:* {record.get('Doc_Type', '')}\n"
+        f"*Appointment Date:* {record.get('Appointment Date', '')}\n"
+        f"*Appointment Time:* {_format_appt_time(record.get('Appointment Time', ''))}\n"
+        f"*SRO:* {record.get('SRO', '')}\n"
+        f"*Party Name 1:* {record.get('Party_Name 1', '')}\n"
+        f"*Party 1 Mobile:* {record.get('Party_Name 1 Mobile_No', '')}\n"
+        f"*Party Name 2:* {record.get('Party_Name 2', '') or '—'}\n"
+        f"*GARVI App ID:* {record.get('Garvi_Application_ID', '')}\n"
+        f"*Index App No:* {record.get('Inedex_Application_No', '')}\n"
+        f"*Index No:* {record.get('Index_No', '')}\n"
+        f"*Search No:* {record.get('Search_No', '')}\n"
+        f"*Title Status:* {record.get('Title_Status', '')}\n"
+        f"*Created By:* {record.get('Created_By', '')}"
+    )
+    _send_group_or_queue(_drop_hidden_fields(text, record.get("Doc_Type")), str(record.get("Entry_ID", "")))
+
+
+def notify_tentative_overdue(records: list, total_tentative: int):
+    """One message listing the records that reached another 15 days as tentative today."""
+    if not _enabled():
+        return
+    lines = [
+        f"{n}. *{r.get('Party_Name 1', '')}* — {r.get('Doc_Type', '')}\n"
+        f"    *Entry ID:* {r.get('Entry_ID', '')}\n"
+        f"    *Mobile:* {r.get('Party_Name 1 Mobile_No', '') or '—'}\n"
+        f"    *SRO:* {r.get('SRO', '')}\n"
+        f"    *Tentative Date:* {r.get('Appointment Date', '')}\n"
+        f"    *Entry Date:* {r.get('Entry_Date', '')} ({r.get('Days Tentative', '')} days ago)"
+        for n, r in enumerate(records, 1)
+    ]
+    _send_group_or_queue(
+        "⏳ *Tentative Records Reminder — DocRegistry Pro*\n\n"
+        f"{len(records)} record(s) still tentative after 15 days or more "
+        f"({total_tentative} tentative in total).\n\n"
+        + "\n\n".join(lines)
+        + "\n\nPlease fix the final date and press ✅ Confirm Appointment in Edit Records 🙏"
+    )
 
 
 def notify_today_appointments(appointments: list):
@@ -409,7 +494,7 @@ def notify_today_appointments(appointments: list):
             f"*Status:* {appt.get('Title_Status', '')}"
         )
         try:
-            send_whatsapp_message(text)
+            send_whatsapp_message(_drop_hidden_fields(text, appt.get("Doc_Type")))
         except Exception:
             pass
 
@@ -452,7 +537,7 @@ def notify_tomorrow_appointments(appointments: list, tomorrow_str: str):
             f"*Status:* {appt.get('Title_Status', '')}"
         )
         try:
-            send_whatsapp_message(text)
+            send_whatsapp_message(_drop_hidden_fields(text, appt.get("Doc_Type")))
         except Exception:
             pass
 
@@ -571,6 +656,8 @@ _FIELD_LABELS = {
     "Search_No":              "Search No",
     "Title_Status":           "Title Status",
     "Remark":                 "Remark",
+    "Party_Name 1 Partners":  "Party 1 Partners",
+    "Appointment_Status":     "Appointment Status",
 }
 
 
@@ -653,6 +740,6 @@ def notify_record_updated(entry_id: str, record: dict, changes: list, updated_by
         f"*Remark:* {record.get('Remark', '') or '—'}"
     )
     try:
-        send_whatsapp_message(body)
+        send_whatsapp_message(_drop_hidden_fields(body, record.get("Doc_Type")))
     except Exception:
         pass

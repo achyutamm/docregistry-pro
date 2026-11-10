@@ -24,7 +24,8 @@ def _whatsapp_enabled() -> bool:
     return bool(_cfg().get("whatsapp", {}).get("enabled", False))
 
 
-def notify_new_entry(record: dict):
+def notify_appointment_confirmed(record: dict):
+    """The group's first message about a record: it stays silent while tentative."""
     if _telegram_enabled():
         try:
             from utils.telegram_sender import notify_new_entry as _tg
@@ -33,7 +34,7 @@ def notify_new_entry(record: dict):
             pass
     if _whatsapp_enabled():
         try:
-            from utils.whatsapp_sender import notify_new_entry as _wa
+            from utils.whatsapp_sender import notify_appointment_confirmed as _wa
             _wa(record)
         except Exception:
             pass
@@ -140,6 +141,24 @@ def notify_pending_records_alert(over_30_records: list, over_30_count: int, tota
         try:
             from utils.whatsapp_sender import notify_pending_records_alert as _wa
             _wa(over_30_records, over_30_count, total_pending)
+        except Exception:
+            pass
+
+
+def notify_record_deleted(record: dict, deleted_from: str, deleted_by: str):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_record_deleted as _wa
+            _wa(record, deleted_from, deleted_by)
+        except Exception:
+            pass
+
+
+def notify_tentative_overdue(records: list, total_tentative: int):
+    if _whatsapp_enabled():
+        try:
+            from utils.whatsapp_sender import notify_tentative_overdue as _wa
+            _wa(records, total_tentative)
         except Exception:
             pass
 

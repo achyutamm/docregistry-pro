@@ -14,8 +14,9 @@ path that writes to a sheet must call the matching clear_*_cache() so the
 writer's own change is visible immediately instead of waiting for the TTL.
 """
 
+import pandas as pd
 import streamlit as st
-from utils.sheets_manager import SheetsManager
+from utils.sheets_manager import SheetsManager, sort_by_appt_date
 
 # How long cached sheet data stays fresh before a forced refetch.
 RECORDS_TTL = 30  # Entry_ID rows + Edit_History
@@ -23,7 +24,7 @@ ADMIN_TTL = 30    # User_Requests + User_Activity_Log
 
 
 @st.cache_resource(show_spinner=False)
-def get_sheets_manager(v: int = 2) -> SheetsManager:
+def get_sheets_manager(v: int = 4) -> SheetsManager:
     # v= forces a cache-key change on deployments that add new SheetsManager methods
     return SheetsManager()
 
@@ -36,8 +37,20 @@ def get_all_records_cached(_sm: SheetsManager):
     return _sm.get_all_records()
 
 
+@st.cache_data(ttl=RECORDS_TTL, show_spinner=False)
+def get_tentative_records_cached(_sm: SheetsManager):
+    return _sm.get_tentative_records()
+
+
+def get_every_record_cached(_sm: SheetsManager):
+    """Confirmed + tentative, for pages that must reach any record (Search, Edit, Calendar)."""
+    frames = [f for f in (get_all_records_cached(_sm), get_tentative_records_cached(_sm)) if not f.empty]
+    return sort_by_appt_date(pd.concat(frames, ignore_index=True)) if frames else pd.DataFrame()
+
+
 def clear_records_cache():
     get_all_records_cached.clear()
+    get_tentative_records_cached.clear()
 
 
 # =====================================================

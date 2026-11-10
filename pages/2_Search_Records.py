@@ -3,7 +3,8 @@
 """
 
 import streamlit as st
-from utils.sheets_cache import get_sheets_manager, get_all_records_cached, get_history_cached
+from utils.ui_helpers import sidebar_theme
+from utils.sheets_cache import get_sheets_manager, get_every_record_cached, get_history_cached
 from utils.date_utils import parse_appt_date_series
 import pandas as pd
 import yaml
@@ -55,6 +56,7 @@ COL_DISPLAY = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appointment Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -74,6 +76,7 @@ FIELD_LABELS = {
     "Doc_Type":               "Document Type",
     "Appointment Date":       "Appointment Date",
     "Appointment Time":       "Appointment Time",
+    "Appointment_Status":     "Appointment Status",
     "SRO":                    "SRO",
     "Party_Name 1":           "Party Name 1",
     "Party_Name 1 Mobile_No": "Party 1 Mobile No",
@@ -92,6 +95,7 @@ def display_df(df):
 # ============================================
 # CUSTOM SIDEBAR NAVIGATION
 # ============================================
+sidebar_theme()
 with st.sidebar:
     st.title("🏛️ DocRegistry Pro")
     st.markdown(f"👋 **{user_info.get('name', username)}**")
@@ -115,7 +119,7 @@ with st.sidebar:
 # ============================================
 try:
     sheets_manager = get_sheets_manager()
-    df = get_all_records_cached(sheets_manager)
+    df = get_every_record_cached(sheets_manager)
 except Exception as e:
     st.error(f"❌ Failed to load records: {e}")
     st.stop()
@@ -196,6 +200,8 @@ if keyword.strip():
         filtered["Inedex_Application_No"].astype(str).str.lower().str.contains(kw, na=False) |
         filtered["Search_No"].astype(str).str.lower().str.contains(kw, na=False)
     )
+    if "Party_Name 1 Partners" in filtered.columns:
+        mask |= filtered["Party_Name 1 Partners"].astype(str).str.lower().str.contains(kw, na=False)
     filtered = filtered[mask]
 
 if status_filter:
@@ -248,10 +254,10 @@ if filtered.empty:
     st.info("No records match your search criteria.")
 else:
     display_cols = [
-        "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time",
+        "Entry_ID", "Doc_Type", "Appointment Date", "Appointment Time", "Appointment_Status",
         "SRO", "Party_Name 1", "Party_Name 1 Mobile_No", "Party_Name 1 Partners", "Party_Name 2",
         "Garvi_Application_ID", "Inedex_Application_No", "Index_No",
-        "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time"
+        "Search_No", "Title_Status", "Created_By", "Entry_Date", "Entry_Time",
     ]
     display_cols = [c for c in display_cols if c in filtered.columns]
     result_df = filtered[display_cols].reset_index(drop=True)

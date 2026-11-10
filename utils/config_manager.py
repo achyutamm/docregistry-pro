@@ -12,7 +12,7 @@ from utils.app_env import CONFIG_FILE  # config.yaml, or config.dev.yaml in dev
 
 
 def load_config():
-    with open(CONFIG_FILE, "r") as f:
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -30,7 +30,7 @@ _ConfigDumper.add_representer(str, _str_representer)
 
 
 def save_config(cfg):
-    with open(CONFIG_FILE, "w") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, Dumper=_ConfigDumper, default_flow_style=False, allow_unicode=True)
 
 
@@ -225,6 +225,47 @@ def set_party1_checklist_test_mode(enabled: bool, recipients):
     p1["test_recipients"] = cleaned
     p1.pop("test_mobile", None)          # replaced by test_recipients
     p1.pop("test_country_code", None)
+    save_config(cfg)
+
+
+def set_transliteration(enabled: bool, review_before_save: bool, corrections):
+    """Gujarati → English names. corrections: [{"gujarati", "english"}] fixed spellings;
+    blank rows are ignored."""
+    def _text(v):   # table cells can arrive as None / NaN for empty
+        s = " ".join(str(v if v is not None else "").split())
+        return "" if s.lower() in ("nan", "none") else s
+
+    cleaned, seen = [], set()
+    for n, r in enumerate(corrections or [], start=1):
+        guj, eng = _text(r.get("gujarati")), _text(r.get("english"))
+        if not guj and not eng:
+            continue
+        if not guj or not eng:
+            raise ValueError(f"Row {n}: enter both the Gujarati word and its English spelling.")
+        if " " in guj:
+            raise ValueError(f"Row {n}: '{guj}' - enter one Gujarati word per row.")
+        if guj in seen:
+            raise ValueError(f"Row {n}: '{guj}' is listed twice.")
+        seen.add(guj)
+        cleaned.append({"gujarati": guj, "english": eng})
+    cfg = load_config()
+    t = cfg.setdefault("transliteration", {})
+    t["enabled"] = bool(enabled)
+    t["review_before_save"] = bool(review_before_save)
+    t["corrections"] = cleaned
+    save_config(cfg)
+
+
+def set_doc_type_hidden_fields(hidden: dict):
+    """hidden: {document type: [sheet columns not shown on the forms]}.
+    Types not in the map keep their setting; an empty list shows every field."""
+    cfg = load_config()
+    rules = cfg.setdefault("doc_type_hidden_fields", {})
+    for doc_type, fields in hidden.items():
+        if fields:
+            rules[doc_type] = list(fields)
+        else:
+            rules.pop(doc_type, None)
     save_config(cfg)
 
 
